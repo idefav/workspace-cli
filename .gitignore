@@ -1,0 +1,12 @@
+.DS_Store
+
+# Go build output
+/workspace
+/bin/
+/dist/
+*.test
+coverage.out
+
+# Local runtime state
+.workspace-cli/
+
