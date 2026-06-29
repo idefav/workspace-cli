@@ -163,3 +163,13 @@
 - 全量验证命令：`env GOCACHE=/private/tmp/workspace-cli-gocache GOMODCACHE=/private/tmp/workspace-cli-gomodcache GOSUMDB=off go test -count=1 ./...`，结果通过。
 - 静态检查：`env GOCACHE=/private/tmp/workspace-cli-gocache GOMODCACHE=/private/tmp/workspace-cli-gomodcache GOSUMDB=off go vet ./...`，结果通过。
 - CLI 构建验证：`env GOCACHE=/private/tmp/workspace-cli-gocache GOMODCACHE=/private/tmp/workspace-cli-gomodcache GOSUMDB=off go build -o /private/tmp/workspace-cli-review/workspace ./cmd/workspace`，结果通过。
+
+## Step 19: GitHub 仓库与 Pages 发布
+
+- 新增项目入口文档 `README.md`，说明 workspace-cli 的定位、核心能力、构建方式、快速开始命令和设计文档入口。
+- 新增 GitHub Pages 介绍页 `docs/index.html`、`docs/assets/styles.css` 和 `docs/favicon.svg`，用于展示项目定位、关键流程、命令面和设计原则。
+- 初始化本地 Git 仓库，首次提交 `3d0feeea6849bd3ec44f09c6b35a853c1b5d9f09`，创建公开仓库 `idefav/workspace-cli` 并推送 `main`。
+- 启用 GitHub Pages，发布源为 `main` 分支 `/docs` 目录，站点地址为 `https://idefav.github.io/workspace-cli/`。
+- 本地页面验证：通过本地静态服务器和浏览器检查桌面 `1280x900`、移动 `390x844` 视口，CSS 生效、favicon 可访问、无横向溢出、控制台无错误。
+- 发布验证：Pages build 状态为 `built`，首页、`requirements-planning.html`、`technical-implementation-plan.html`、CSS 和 favicon 均返回 HTTP 200。
+- 项目验证：`go test -count=1 ./...`、`go vet ./...`、`go build -o /private/tmp/workspace-cli-site/workspace ./cmd/workspace` 均通过。
