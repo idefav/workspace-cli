@@ -1,0 +1,74 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Test
+        run: go test -count=1 ./...
+
+      - name: Build archives
+        env:
+          VERSION: ${{ github.ref_name }}
+          COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          LDFLAGS="-s -w -X workspace-cli/internal/version.Version=${VERSION} -X workspace-cli/internal/version.Commit=${COMMIT} -X workspace-cli/internal/version.Date=${DATE}"
+
+          build_one() {
+            goos="$1"
+            goarch="$2"
+            ext=""
+            if [ "$goos" = "windows" ]; then
+              ext=".exe"
+            fi
+            name="workspace-cli_${VERSION}_${goos}_${goarch}"
+            out_dir="dist/${name}"
+            mkdir -p "$out_dir"
+            GOOS="$goos" GOARCH="$goarch" CGO_ENABLED=0 go build -trimpath -ldflags "$LDFLAGS" -o "${out_dir}/workspace${ext}" ./cmd/workspace
+            if [ "$goos" = "windows" ]; then
+              (cd dist && zip -q "${name}.zip" "${name}/workspace${ext}")
+            else
+              (cd dist && tar -czf "${name}.tar.gz" "${name}/workspace${ext}")
+            fi
+            rm -rf "$out_dir"
+          }
+
+          build_one darwin amd64
+          build_one darwin arm64
+          build_one linux amd64
+          build_one linux arm64
+          build_one windows amd64
+
+          (cd dist && sha256sum *.tar.gz *.zip > checksums.txt)
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          gh release create "$VERSION" dist/*.tar.gz dist/*.zip dist/checksums.txt \
+            --title "$VERSION" \
+            --notes "workspace-cli ${VERSION}"
+

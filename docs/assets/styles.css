@@ -280,6 +280,31 @@ article,
   background: var(--white);
 }
 
+.install-section {
+  background: #edf4f1;
+}
+
+.install-panel {
+  display: grid;
+  max-width: 980px;
+  gap: 14px;
+  border: 1px solid rgba(28, 124, 84, 0.2);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.82);
+  padding: clamp(18px, 3vw, 26px);
+}
+
+.install-panel pre {
+  border-radius: 8px;
+  background: #10161d;
+  color: #dff4e7;
+}
+
+.install-panel p {
+  margin: 0;
+  color: var(--muted);
+}
+
 .command-layout {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

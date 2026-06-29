@@ -12,6 +12,8 @@ import (
 	"workspace-cli/internal/config"
 	gitx "workspace-cli/internal/git"
 	"workspace-cli/internal/store"
+	"workspace-cli/internal/update"
+	"workspace-cli/internal/version"
 	wsvc "workspace-cli/internal/workspace"
 )
 
@@ -23,10 +25,65 @@ func NewRootCommand() *cobra.Command {
 		SilenceErrors: true,
 	}
 	cmd.PersistentFlags().StringVar(&home, "home", "", "workspace-cli home directory")
+	cmd.AddCommand(newVersionCommand())
+	cmd.AddCommand(newUpdateCommand())
 	cmd.AddCommand(newInitCommand(&home))
 	cmd.AddCommand(newRepoCommand(&home))
 	cmd.AddCommand(newReqCommand(&home))
 	cmd.AddCommand(newDevCommand(&home))
+	return cmd
+}
+
+func newVersionCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "version",
+		Short: "print workspace-cli version",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			info := version.Current()
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "version:\t%s\ncommit:\t%s\ndate:\t%s\n", info.Version, info.Commit, info.Date)
+			return nil
+		},
+	}
+}
+
+func newUpdateCommand() *cobra.Command {
+	var checkOnly bool
+	var ownerRepo string
+	cmd := &cobra.Command{
+		Use:   "update",
+		Short: "check for and install workspace-cli updates",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			current := version.Current()
+			client := update.Client{
+				OwnerRepo:      ownerRepo,
+				CurrentVersion: current.Version,
+			}
+			if checkOnly {
+				info, err := client.CheckLatest(cmd.Context())
+				if err != nil {
+					return err
+				}
+				if info.UpdateAvailable {
+					_, _ = fmt.Fprintf(cmd.OutOrStdout(), "update available:\t%s -> %s\nrelease:\t%s\n", info.CurrentVersion, info.LatestVersion, info.ReleaseURL)
+				} else {
+					_, _ = fmt.Fprintf(cmd.OutOrStdout(), "workspace-cli is up to date:\t%s\n", info.CurrentVersion)
+				}
+				return nil
+			}
+			info, err := client.InstallLatest(cmd.Context())
+			if err != nil {
+				return err
+			}
+			if !info.UpdateAvailable {
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "workspace-cli is up to date:\t%s\n", info.CurrentVersion)
+				return nil
+			}
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "updated workspace-cli:\t%s -> %s\n", info.CurrentVersion, info.LatestVersion)
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&checkOnly, "check", false, "only check whether an update is available")
+	cmd.Flags().StringVar(&ownerRepo, "repo", update.DefaultOwnerRepo, "GitHub owner/repo to check for releases")
 	return cmd
 }
 

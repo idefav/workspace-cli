@@ -173,3 +173,16 @@
 - 本地页面验证：通过本地静态服务器和浏览器检查桌面 `1280x900`、移动 `390x844` 视口，CSS 生效、favicon 可访问、无横向溢出、控制台无错误。
 - 发布验证：Pages build 状态为 `built`，首页、`requirements-planning.html`、`technical-implementation-plan.html`、CSS 和 favicon 均返回 HTTP 200。
 - 项目验证：`go test -count=1 ./...`、`go vet ./...`、`go build -o /private/tmp/workspace-cli-site/workspace ./cmd/workspace` 均通过。
+
+## Step 20: Release、安装脚本与 CLI 自更新
+
+- 新增 GitHub Actions release workflow：推送 `v*.*.*` tag 时运行测试，构建 `darwin-amd64`、`darwin-arm64`、`linux-amd64`、`linux-arm64`、`windows-amd64` 五个平台包，生成 `checksums.txt` 并发布 GitHub Release。
+- 新增 `internal/version`，支持通过 `-ldflags` 注入 `Version`、`Commit`、`Date`；新增 `workspace version` 输出构建元数据。
+- 新增 `internal/update`，实现 GitHub latest release 查询、平台 asset 匹配、semver 比较、`checksums.txt` 解析、sha256 校验、tar.gz/zip 解包和当前二进制替换。
+- 新增 `workspace update --check` 和 `workspace update`；默认检查 `idefav/workspace-cli`，安装更新前必须校验 release checksum。
+- 新增 `docs/install.sh`，用户可复制 `curl -fsSL https://idefav.github.io/workspace-cli/install.sh | sh` 一键安装；默认安装到 `/usr/local/bin/workspace`，支持 `INSTALL_DIR` 覆盖。
+- 更新 GitHub Pages 首页和 `README.md`，展示一键安装命令、更新命令和 tag release 说明。
+- TDD 记录：先补 `version/update` 命令面测试和 `internal/update` 的 asset 命名、版本比较、release 查询、checksum 解析、下载安装替换测试；红测失败后实现并跑绿。
+- 本地验证：`sh -n docs/install.sh`、Ruby YAML 解析 release workflow、`go test -count=1 ./...`、`go vet ./...`、本机 ldflags 构建运行 `workspace version` 均通过。
+- 跨平台构建验证：使用与 workflow 等价的 `GOOS/GOARCH` 和 ldflags 本地构建五个平台目标，均成功产出二进制。
+- Pages 本地验证：通过静态服务器和浏览器检查桌面 `1280x900`、移动 `390x844` 视口，安装区块可见、安装命令正确、CSS 生效且无横向溢出。

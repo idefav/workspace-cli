@@ -18,6 +18,7 @@
         <span>workspace-cli</span>
       </a>
       <nav class="nav" aria-label="主导航">
+        <a href="#install">安装</a>
         <a href="#flow">流程</a>
         <a href="#commands">命令</a>
         <a href="#design">设计</a>
@@ -35,7 +36,7 @@
           </p>
           <div class="actions">
             <a class="button primary" href="https://github.com/idefav/workspace-cli">查看源码</a>
-            <a class="button secondary" href="./requirements-planning.html">阅读需求规划</a>
+            <a class="button secondary" href="#install">一键安装</a>
           </div>
         </div>
 
@@ -78,6 +79,22 @@ $ workspace req finish pay-flow -m "feat: complete pay-flow"</code></pre>
             <dd>SQLite + Git worktree</dd>
           </div>
         </dl>
+      </section>
+
+      <section class="section install-section" id="install">
+        <div class="section-heading">
+          <p class="eyebrow">install</p>
+          <h2>复制一行命令安装最新版本</h2>
+          <p>
+            安装脚本会识别 macOS/Linux 和 CPU 架构，从 GitHub latest release 下载对应包，校验 checksum 后安装 `workspace`。
+          </p>
+        </div>
+        <div class="install-panel">
+          <pre><code>curl -fsSL https://idefav.github.io/workspace-cli/install.sh | sh</code></pre>
+          <p>
+            默认安装到 <code>/usr/local/bin</code>。用户态安装可使用 <code>INSTALL_DIR="$HOME/.local/bin"</code>。
+          </p>
+        </div>
       </section>
 
       <section class="section flow-section" id="flow">
@@ -133,6 +150,7 @@ $ workspace req finish pay-flow -m "feat: complete pay-flow"</code></pre>
               <li><code>workspace req add-repo &lt;key&gt; &lt;repo&gt;</code></li>
               <li><code>workspace req finish &lt;key&gt; -m &lt;message&gt;</code></li>
               <li><code>workspace dev &lt;key&gt; --tool codex|claude</code></li>
+              <li><code>workspace update --check</code></li>
             </ul>
           </div>
         </div>

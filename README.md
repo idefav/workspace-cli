@@ -16,6 +16,20 @@ workspace-cli 是一个本地命令行工具，用来管理“需求开发空间
 
 ## 安装与构建
 
+一键安装最新 release：
+
+```bash
+curl -fsSL https://idefav.github.io/workspace-cli/install.sh | sh
+```
+
+默认安装到 `/usr/local/bin/workspace`。也可以指定用户态目录：
+
+```bash
+INSTALL_DIR="$HOME/.local/bin" sh -c "$(curl -fsSL https://idefav.github.io/workspace-cli/install.sh)"
+```
+
+从源码构建：
+
 ```bash
 go build -o workspace ./cmd/workspace
 ```
@@ -41,6 +55,26 @@ workspace --home /tmp/workspace-cli req list
 WORKSPACE_CLI_HOME=/tmp/workspace-cli workspace repo list
 ```
 
+## 更新 CLI
+
+```bash
+workspace version
+workspace update --check
+workspace update
+```
+
+`workspace update` 会查询 GitHub latest release，下载当前平台对应的包，校验 `checksums.txt` 后替换当前二进制。
+
+## Release
+
+推送符合 `v*.*.*` 的 tag 会触发 GitHub Actions 自动构建多平台包并发布 GitHub Release：
+
+- `darwin-amd64`
+- `darwin-arm64`
+- `linux-amd64`
+- `linux-arm64`
+- `windows-amd64`
+
 ## 设计文档
 
 - [需求规划](docs/requirements-planning.md)
@@ -51,4 +85,3 @@ WORKSPACE_CLI_HOME=/tmp/workspace-cli workspace repo list
 ## GitHub Pages
 
 项目介绍页位于 [docs/index.html](docs/index.html)，发布后用于展示 workspace-cli 的定位、流程和命令示例。
-

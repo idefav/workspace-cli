@@ -36,6 +36,8 @@ func TestInitCommandCreatesHomeAndDatabase(t *testing.T) {
 func TestRootCommandIncludesDocumentedCommandSurface(t *testing.T) {
 	cmd := NewRootCommand()
 	for _, path := range [][]string{
+		{"version"},
+		{"update"},
 		{"repo", "add"},
 		{"repo", "list"},
 		{"repo", "sync"},
@@ -52,6 +54,27 @@ func TestRootCommandIncludesDocumentedCommandSurface(t *testing.T) {
 	} {
 		if _, _, err := cmd.Find(path); err != nil {
 			t.Fatalf("command %v not found: %v", path, err)
+		}
+	}
+}
+
+func TestVersionCommandPrintsBuildMetadata(t *testing.T) {
+	cmd := NewRootCommand()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"version"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v\n%s", err, out.String())
+	}
+	for _, want := range []string{
+		"version:",
+		"commit:",
+		"date:",
+	} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("version output missing %q:\n%s", want, out.String())
 		}
 	}
 }
