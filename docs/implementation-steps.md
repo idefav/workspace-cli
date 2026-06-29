@@ -186,3 +186,13 @@
 - 本地验证：`sh -n docs/install.sh`、Ruby YAML 解析 release workflow、`go test -count=1 ./...`、`go vet ./...`、本机 ldflags 构建运行 `workspace version` 均通过。
 - 跨平台构建验证：使用与 workflow 等价的 `GOOS/GOARCH` 和 ldflags 本地构建五个平台目标，均成功产出二进制。
 - Pages 本地验证：通过静态服务器和浏览器检查桌面 `1280x900`、移动 `390x844` 视口，安装区块可见、安装命令正确、CSS 生效且无横向溢出。
+
+## Step 21: v0.1.0 Release 验证
+
+- 推送 `main` 提交 `dcb931fc8aa2cd28f81706d8354ff9181e04e863` 后，创建并推送 tag `v0.1.0`。
+- GitHub Actions run `28408532038` 成功完成，Release workflow 的 test、build archives、publish release 步骤全部通过。
+- GitHub Release `v0.1.0` 已发布，包含 `checksums.txt`、`workspace-cli_v0.1.0_darwin_amd64.tar.gz`、`workspace-cli_v0.1.0_darwin_arm64.tar.gz`、`workspace-cli_v0.1.0_linux_amd64.tar.gz`、`workspace-cli_v0.1.0_linux_arm64.tar.gz`、`workspace-cli_v0.1.0_windows_amd64.zip`。
+- Pages build 已更新到提交 `dcb931fc8aa2cd28f81706d8354ff9181e04e863`，`https://idefav.github.io/workspace-cli/install.sh` 返回 HTTP 200。
+- 一键安装验证：`curl -fsSL https://idefav.github.io/workspace-cli/install.sh | INSTALL_DIR=/private/tmp/workspace-cli-install-test sh` 成功安装 `v0.1.0`，输出 commit `dcb931fc8aa2cd28f81706d8354ff9181e04e863`。
+- 更新检查验证：安装后的 `/private/tmp/workspace-cli-install-test/workspace update --check` 输出 `workspace-cli is up to date: v0.1.0`。
+- 自更新验证：本地构建 `v0.0.1` 旧版二进制后执行 `workspace update`，成功替换为 release 中的 `v0.1.0`。
