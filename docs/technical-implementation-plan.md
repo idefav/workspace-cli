@@ -62,6 +62,7 @@ workspace req archive <key-or-slug>
 workspace req finish <key-or-slug> [-m <commit-message>]
 
 workspace dev <key-or-slug> --tool codex|claude
+workspace ide <key-or-slug> [--tool vscode|cursor|zed]
 ```
 
 Cobra 层只负责参数解析、加载配置、构造 service 和输出结果。业务规则放到 `internal/workspace`。
@@ -186,13 +187,18 @@ Git 操作统一封装在 `internal/git`：
 - cleanup-pending 需求只允许 `show`、`list`、`finish`；`UpdateRequirement`、`AddRepoToRequirement`、`ArchiveRequirement` 必须返回可恢复错误。
 - completed 需求返回明确错误，不执行修改；archive 对已归档 completed 需求重复执行除外，作为幂等 no-op 成功返回。
 
-## 7. Agent 启动
+## 7. Agent 与 IDE 启动
 
 `internal/agent` 根据配置启动工具：
 
 - `codex` 默认命令：`codex`。
 - `claude` 默认命令：`claude`。
+- `vscode` 默认命令：`code`。
+- `cursor` 默认命令：`cursor`。
+- `zed` 默认命令：`zed`。
 - 启动目录为需求 workspace path。
+- `workspace dev` 直接执行 agent 命令。
+- `workspace ide` 默认选择 `vscode`，把需求 workspace path 追加为 IDE 命令参数，例如 `code <workspacePath>`。
 - stdin/stdout/stderr 继承当前终端。
 - v1 不记录会话 ID，不管理会话恢复。
 
@@ -201,6 +207,7 @@ Git 操作统一封装在 `internal/git`：
 单元测试：
 
 - config 默认路径和 init 输出。
+- config 默认包含 `codex`、`claude`、`vscode`、`cursor`、`zed` 工具命令，且可覆盖 IDE 命令。
 - slug 与 feature branch 生成。
 - SQLite migration 和基本 CRUD。
 - requirement status 与 `archived_at` 双轴状态。
@@ -252,3 +259,6 @@ CLI 测试：
 - `req list --all` 同时展示 lifecycle status 和 archived 状态。
 - `workspace --home <path> repo list` 等任意子命令都使用指定 home。
 - `dev` 对未知工具返回错误。
+- `ide` 默认使用 `vscode`，把 requirement workspace path 作为最后一个参数传给 IDE 命令。
+- `ide --tool cursor|zed` 使用对应配置命令。
+- `ide` 对未知 IDE tool 返回 `unknown ide tool "<tool>"`。

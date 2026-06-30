@@ -203,3 +203,15 @@
 - 更新 `README.md`，新增 Shell Completion 章节，覆盖 zsh、bash、fish、PowerShell 的补全脚本安装方式，并提示可查看各 shell 的 `workspace completion <shell> --help`。
 - 更新 GitHub Pages 首页，新增“补全”导航和自动补全说明区块，展示 zsh 与 fish 的常用配置命令，并在命令列表中补充 `workspace completion zsh`。
 - 新增 CLI 测试 `TestCompletionCommandIsAvailable`，通过执行 `workspace completion --help` 断言 completion 命令实际可用且列出四种 shell。
+
+## Step 23: IDE 打开命令
+
+- 新增 `workspace ide <key-or-slug> [--tool vscode|cursor|zed]`，默认使用 `vscode`。
+- `workspace ide` 读取需求 workspace path，以该路径作为执行目录，并把 workspace path 追加为 IDE 命令参数，例如 `code <workspacePath>`。
+- 扩展默认配置 `tools`，新增 `vscode: "code"`、`cursor: "cursor"`、`zed: "zed"`，保持 `codex`、`claude` 配置兼容。
+- 新增配置测试覆盖 IDE 默认命令和自定义覆盖；新增 CLI 测试覆盖命令面、默认 VS Code、指定 Cursor、未知 IDE tool 错误。
+- 更新 `README.md`、GitHub Pages 首页、需求规划和技术方案，加入 IDE 打开能力与使用示例。
+- 针对验证命令：`env GOCACHE=/private/tmp/workspace-cli-gocache GOMODCACHE=/private/tmp/workspace-cli-gomodcache GOSUMDB=off go test ./internal/config ./internal/cli -run 'TestInitCreatesDefaultConfigAndDirectories|TestLoadCustomIDEToolCommands|TestRootCommandIncludesDocumentedCommandSurface|TestIDECommandDefaultsToVSCodeAndOpensRequirementWorkspace|TestIDECommandUsesSelectedTool|TestIDEUnknownToolReturnsError'`，结果通过。
+- 全量验证命令：`env GOCACHE=/private/tmp/workspace-cli-gocache GOMODCACHE=/private/tmp/workspace-cli-gomodcache GOSUMDB=off go test -count=1 ./...`，结果通过。
+- 静态检查命令：`env GOCACHE=/private/tmp/workspace-cli-gocache GOMODCACHE=/private/tmp/workspace-cli-gomodcache GOSUMDB=off go vet ./...`，结果通过。
+- CLI 构建验证：`env GOCACHE=/private/tmp/workspace-cli-gocache GOMODCACHE=/private/tmp/workspace-cli-gomodcache GOSUMDB=off go build -o /private/tmp/workspace-cli-ide/workspace ./cmd/workspace`，结果通过；`/private/tmp/workspace-cli-ide/workspace ide --help` 展示新命令说明。

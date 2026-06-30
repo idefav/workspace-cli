@@ -31,6 +31,7 @@ func NewRootCommand() *cobra.Command {
 	cmd.AddCommand(newRepoCommand(&home))
 	cmd.AddCommand(newReqCommand(&home))
 	cmd.AddCommand(newDevCommand(&home))
+	cmd.AddCommand(newIDECommand(&home))
 	return cmd
 }
 
@@ -429,6 +430,43 @@ func newDevCommand(home *string) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&tool, "tool", "codex", "tool to run: codex or claude")
+	return cmd
+}
+
+func newIDECommand(home *string) *cobra.Command {
+	var tool string
+	cmd := &cobra.Command{
+		Use:  "ide <key-or-slug>",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, svc, cleanup, err := loadConfigAndService(*home)
+			if err != nil {
+				return err
+			}
+			defer cleanup()
+			req, err := svc.GetRequirement(cmd.Context(), args[0])
+			if err != nil {
+				return err
+			}
+			var command []string
+			switch tool {
+			case "vscode":
+				command = cfg.Tools.VSCode
+			case "cursor":
+				command = cfg.Tools.Cursor
+			case "zed":
+				command = cfg.Tools.Zed
+			default:
+				return fmt.Errorf("unknown ide tool %q", tool)
+			}
+			if len(command) == 0 {
+				return fmt.Errorf("empty ide tool command for %q", tool)
+			}
+			command = append(append([]string{}, command...), req.WorkspacePath)
+			return agent.Run(req.WorkspacePath, command)
+		},
+	}
+	cmd.Flags().StringVar(&tool, "tool", "vscode", "IDE to run: vscode, cursor, or zed")
 	return cmd
 }
 

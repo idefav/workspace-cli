@@ -19,6 +19,9 @@ type Config struct {
 type Tools struct {
 	Codex  []string
 	Claude []string
+	VSCode []string
+	Cursor []string
+	Zed    []string
 }
 
 func Default(home string) Config {
@@ -32,6 +35,9 @@ func Default(home string) Config {
 		Tools: Tools{
 			Codex:  []string{"codex"},
 			Claude: []string{"claude"},
+			VSCode: []string{"code"},
+			Cursor: []string{"cursor"},
+			Zed:    []string{"zed"},
 		},
 	}
 }
@@ -86,6 +92,18 @@ func Load(home string) (Config, error) {
 			if value != "" {
 				cfg.Tools.Claude = []string{value}
 			}
+		case "vscode":
+			if value != "" {
+				cfg.Tools.VSCode = []string{value}
+			}
+		case "cursor":
+			if value != "" {
+				cfg.Tools.Cursor = []string{value}
+			}
+		case "zed":
+			if value != "" {
+				cfg.Tools.Zed = []string{value}
+			}
 		}
 	}
 	return cfg, nil
@@ -99,5 +117,8 @@ requirements_dir: "%s"
 tools:
   codex: "%s"
   claude: "%s"
-`, cfg.DBPath, cfg.WorkDir, cfg.ReposDir, cfg.ReqDir, cfg.Tools.Codex[0], cfg.Tools.Claude[0])
+  vscode: "%s"
+  cursor: "%s"
+  zed: "%s"
+`, cfg.DBPath, cfg.WorkDir, cfg.ReposDir, cfg.ReqDir, cfg.Tools.Codex[0], cfg.Tools.Claude[0], cfg.Tools.VSCode[0], cfg.Tools.Cursor[0], cfg.Tools.Zed[0])
 }

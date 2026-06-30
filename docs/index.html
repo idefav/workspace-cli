@@ -55,6 +55,7 @@
 pay-flow  ~/.workspace-cli/work/requirements/pay-flow
 
 $ workspace dev pay-flow --tool codex
+$ workspace ide pay-flow
 $ workspace req finish pay-flow -m "feat: complete pay-flow"</code></pre>
         </div>
       </section>
@@ -142,7 +143,7 @@ workspace completion fish \
           <article>
             <span class="step">03</span>
             <h3>进入开发</h3>
-            <p>使用 Codex 或 Claude Code 从需求 workspace 启动，围绕同一个需求修改多个仓库。</p>
+            <p>使用 Codex、Claude Code 或 IDE 从需求 workspace 启动，围绕同一个需求修改多个仓库。</p>
           </article>
           <article>
             <span class="step">04</span>
@@ -176,6 +177,7 @@ workspace completion fish \
               <li><code>workspace req add-repo &lt;key&gt; &lt;repo&gt;</code></li>
               <li><code>workspace req finish &lt;key&gt; -m &lt;message&gt;</code></li>
               <li><code>workspace dev &lt;key&gt; --tool codex|claude</code></li>
+              <li><code>workspace ide &lt;key&gt; --tool vscode</code></li>
               <li><code>workspace update --check</code></li>
               <li><code>workspace completion zsh</code></li>
             </ul>

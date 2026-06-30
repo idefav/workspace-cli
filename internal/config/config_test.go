@@ -40,4 +40,40 @@ func TestInitCreatesDefaultConfigAndDirectories(t *testing.T) {
 	if loaded.Tools.Codex[0] != "codex" || loaded.Tools.Claude[0] != "claude" {
 		t.Fatalf("unexpected tool defaults: %+v", loaded.Tools)
 	}
+	if loaded.Tools.VSCode[0] != "code" || loaded.Tools.Cursor[0] != "cursor" || loaded.Tools.Zed[0] != "zed" {
+		t.Fatalf("unexpected IDE defaults: %+v", loaded.Tools)
+	}
+}
+
+func TestLoadCustomIDEToolCommands(t *testing.T) {
+	home := t.TempDir()
+	if _, err := Init(home); err != nil {
+		t.Fatalf("Init() error = %v", err)
+	}
+	configPath := filepath.Join(home, "config.yaml")
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	updated := string(data) + `  vscode: "code-insiders"
+  cursor: "cursor-nightly"
+  zed: "zed-preview"
+`
+	if err := os.WriteFile(configPath, []byte(updated), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	loaded, err := Load(home)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if loaded.Tools.VSCode[0] != "code-insiders" {
+		t.Fatalf("VSCode = %v", loaded.Tools.VSCode)
+	}
+	if loaded.Tools.Cursor[0] != "cursor-nightly" {
+		t.Fatalf("Cursor = %v", loaded.Tools.Cursor)
+	}
+	if loaded.Tools.Zed[0] != "zed-preview" {
+		t.Fatalf("Zed = %v", loaded.Tools.Zed)
+	}
 }

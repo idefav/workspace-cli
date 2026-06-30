@@ -2,7 +2,7 @@
 
 ## 1. 产品定位
 
-workspace-cli 是一个本地命令行工具，用于管理“需求开发空间”。这里的 workspace 不是单个代码仓库，而是围绕一个需求临时组织起来的开发空间。一个需求可以绑定多个 Git repo，workspace-cli 会把这些 repo 的 feature 分支 worktree 集中到同一个需求目录中，方便使用 Codex 或 Claude Code 进行跨仓库开发。
+workspace-cli 是一个本地命令行工具，用于管理“需求开发空间”。这里的 workspace 不是单个代码仓库，而是围绕一个需求临时组织起来的开发空间。一个需求可以绑定多个 Git repo，workspace-cli 会把这些 repo 的 feature 分支 worktree 集中到同一个需求目录中，方便使用 Codex、Claude Code 或 IDE 进行跨仓库开发。
 
 v1 只管理本地需求开发流程：创建需求、选择 repo、准备 worktree、启动开发工具、完成需求、提交并推送代码、清理 worktree、归档需求。它不接管 PR、CI、代码评审、远端 issue 或权限体系。
 
@@ -60,7 +60,9 @@ v1 只管理本地需求开发流程：创建需求、选择 repo、准备 workt
 ### 3.5 开发工具启动
 
 - 支持 `workspace dev <req> --tool codex|claude`。
+- 支持 `workspace ide <req> --tool vscode|cursor|zed`，默认使用 `vscode`。
 - 命令进入需求 workspace 后启动配置中的工具命令。
+- IDE 命令进入需求 workspace 后，把需求 workspace path 作为参数传给 IDE，只打开需求 workspace 根目录。
 - v1 不记录、不恢复、不编排 Codex 或 Claude Code 会话。
 
 ### 3.6 需求完成
@@ -115,7 +117,8 @@ v1 只管理本地需求开发流程：创建需求、选择 repo、准备 workt
 1. 用户运行 `workspace dev pay-flow --tool codex`。
 2. CLI 进入需求 workspace。
 3. CLI 启动 `codex` 命令。
-4. 用户在集中 workspace 中完成跨仓库开发。
+4. 用户也可以运行 `workspace ide pay-flow`，默认使用 VS Code 打开需求 workspace，或通过 `--tool cursor|zed` 选择其他 IDE。
+5. 用户在集中 workspace 中完成跨仓库开发。
 
 ### 5.5 完成需求
 
@@ -153,6 +156,7 @@ v1 只管理本地需求开发流程：创建需求、选择 repo、准备 workt
 - 同一个需求的所有 repo 使用统一 feature 分支名。
 - 可以向普通活跃需求追加 repo 并创建对应 worktree。
 - 可以启动 Codex 或 Claude Code 到需求 workspace。
+- 可以默认用 VS Code 打开需求 workspace，也可以选择 Cursor 或 Zed。
 - 完成需求时，全部 repo 推送成功后才删除 worktree。
 - 任一 push 或 commit 失败时，需求保持 active，worktree 不被删除。
 - worktree 删除失败时，finish 可幂等重试清理，不能重复提交或重复推送已成功 repo。

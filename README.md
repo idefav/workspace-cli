@@ -1,6 +1,6 @@
 # workspace-cli
 
-workspace-cli 是一个本地命令行工具，用来管理“需求开发空间”。它可以把一个需求涉及的多个 Git repo 以 `git worktree` 的方式集中到同一个 workspace 中，方便使用 Codex 或 Claude Code 做跨仓库开发。
+workspace-cli 是一个本地命令行工具，用来管理“需求开发空间”。它可以把一个需求涉及的多个 Git repo 以 `git worktree` 的方式集中到同一个 workspace 中，方便使用 Codex、Claude Code 或 IDE 做跨仓库开发。
 
 项目当前聚焦 v1：管理本地开发流程，不接管 PR、CI、代码评审、issue 平台或权限体系。
 
@@ -10,7 +10,7 @@ workspace-cli 是一个本地命令行工具，用来管理“需求开发空间
 - 创建需求并绑定一个或多个 repo。
 - 为每个需求统一创建 `feature/<req-slug>` 分支。
 - 将多个 repo 的 worktree 集中放进同一个需求 workspace。
-- 从需求 workspace 启动 Codex 或 Claude Code。
+- 从需求 workspace 启动 Codex、Claude Code，或用 VS Code/Cursor/Zed 打开 workspace。
 - 完成需求时自动检查、提交、推送、清理 worktree 并归档需求。
 - 使用 SQLite 记录 repo、需求、绑定快照、状态和失败操作日志。
 
@@ -44,8 +44,24 @@ go build -o workspace ./cmd/workspace
 
 ./workspace req create "支付链路优化" --key pay-flow --repo backend --repo frontend
 ./workspace dev pay-flow --tool codex
+./workspace ide pay-flow
 
 ./workspace req finish pay-flow -m "feat: complete pay-flow"
+```
+
+## 打开 IDE
+
+默认使用 VS Code 打开需求 workspace：
+
+```bash
+workspace ide pay-flow
+```
+
+也可以选择其他内置 IDE：
+
+```bash
+workspace ide pay-flow --tool cursor
+workspace ide pay-flow --tool zed
 ```
 
 默认状态目录是 `~/.workspace-cli`。也可以通过全局参数或环境变量指定：

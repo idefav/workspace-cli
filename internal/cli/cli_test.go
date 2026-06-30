@@ -38,6 +38,7 @@ func TestRootCommandIncludesDocumentedCommandSurface(t *testing.T) {
 	for _, path := range [][]string{
 		{"version"},
 		{"update"},
+		{"ide"},
 		{"repo", "add"},
 		{"repo", "list"},
 		{"repo", "sync"},
@@ -215,6 +216,54 @@ func TestDevUnknownToolReturnsError(t *testing.T) {
 	}
 }
 
+func TestIDECommandDefaultsToVSCodeAndOpensRequirementWorkspace(t *testing.T) {
+	home := t.TempDir()
+	remote := seedRemote(t)
+	logPath := filepath.Join(t.TempDir(), "ide.log")
+	fakeIDE := writeFakeCommand(t, logPath)
+
+	runWorkspace(t, home, "init")
+	replaceConfigLine(t, filepath.Join(home, "config.yaml"), `  vscode: "code"`, `  vscode: "`+fakeIDE+`"`)
+	runWorkspace(t, home, "repo", "add", "backend", remote, "--base", "main")
+	runWorkspace(t, home, "req", "create", "Payment Flow", "--key", "pay-flow", "--repo", "backend")
+
+	runWorkspace(t, home, "ide", "pay-flow")
+
+	wantWorkspace := filepath.Join(home, "work", "requirements", "pay-flow")
+	assertFakeCommandInvocation(t, logPath, wantWorkspace)
+}
+
+func TestIDECommandUsesSelectedTool(t *testing.T) {
+	home := t.TempDir()
+	remote := seedRemote(t)
+	logPath := filepath.Join(t.TempDir(), "cursor.log")
+	fakeIDE := writeFakeCommand(t, logPath)
+
+	runWorkspace(t, home, "init")
+	replaceConfigLine(t, filepath.Join(home, "config.yaml"), `  cursor: "cursor"`, `  cursor: "`+fakeIDE+`"`)
+	runWorkspace(t, home, "repo", "add", "backend", remote, "--base", "main")
+	runWorkspace(t, home, "req", "create", "Payment Flow", "--key", "pay-flow", "--repo", "backend")
+
+	runWorkspace(t, home, "ide", "pay-flow", "--tool", "cursor")
+
+	wantWorkspace := filepath.Join(home, "work", "requirements", "pay-flow")
+	assertFakeCommandInvocation(t, logPath, wantWorkspace)
+}
+
+func TestIDEUnknownToolReturnsError(t *testing.T) {
+	home := t.TempDir()
+	remote := seedRemote(t)
+
+	runWorkspace(t, home, "init")
+	runWorkspace(t, home, "repo", "add", "backend", remote, "--base", "main")
+	runWorkspace(t, home, "req", "create", "Payment Flow", "--key", "pay-flow", "--repo", "backend")
+
+	err := runWorkspaceError(home, "ide", "pay-flow", "--tool", "unknown")
+	if err == nil || !strings.Contains(err.Error(), `unknown ide tool "unknown"`) {
+		t.Fatalf("ide --tool unknown error = %v, want unknown ide tool", err)
+	}
+}
+
 func TestWorkspaceCLIHomeEnvIsUsedWhenHomeFlagMissing(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("WORKSPACE_CLI_HOME", home)
@@ -252,6 +301,53 @@ func runWorkspaceError(home string, args ...string) error {
 	cmd.SetErr(&out)
 	cmd.SetArgs(append([]string{"--home", home}, args...))
 	return cmd.Execute()
+}
+
+func writeFakeCommand(t *testing.T, logPath string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "fake-ide")
+	script := "#!/bin/sh\npwd > " + shellQuote(logPath) + "\nprintf '%s\\n' \"$@\" >> " + shellQuote(logPath) + "\n"
+	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
+		t.Fatalf("write fake command: %v", err)
+	}
+	return path
+}
+
+func assertFakeCommandInvocation(t *testing.T, logPath, workspacePath string) {
+	t.Helper()
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read fake command log: %v", err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("fake command log lines = %v, want cwd and workspace arg", lines)
+	}
+	if lines[0] != workspacePath {
+		t.Fatalf("fake command cwd = %q, want %q", lines[0], workspacePath)
+	}
+	if lines[1] != workspacePath {
+		t.Fatalf("fake command arg = %q, want %q", lines[1], workspacePath)
+	}
+}
+
+func replaceConfigLine(t *testing.T, path, oldLine, newLine string) {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	updated := strings.Replace(string(data), oldLine, newLine, 1)
+	if updated == string(data) {
+		t.Fatalf("config line %q not found in:\n%s", oldLine, data)
+	}
+	if err := os.WriteFile(path, []byte(updated), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+}
+
+func shellQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
 }
 
 func seedRemote(t *testing.T) string {
