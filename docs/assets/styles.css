@@ -284,6 +284,10 @@ article,
   background: #edf4f1;
 }
 
+.completion-section {
+  background: var(--white);
+}
+
 .install-panel {
   display: grid;
   max-width: 980px;

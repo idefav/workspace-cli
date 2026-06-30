@@ -196,3 +196,10 @@
 - 一键安装验证：`curl -fsSL https://idefav.github.io/workspace-cli/install.sh | INSTALL_DIR=/private/tmp/workspace-cli-install-test sh` 成功安装 `v0.1.0`，输出 commit `dcb931fc8aa2cd28f81706d8354ff9181e04e863`。
 - 更新检查验证：安装后的 `/private/tmp/workspace-cli-install-test/workspace update --check` 输出 `workspace-cli is up to date: v0.1.0`。
 - 自更新验证：本地构建 `v0.0.1` 旧版二进制后执行 `workspace update`，成功替换为 release 中的 `v0.1.0`。
+
+## Step 22: Shell Completion 使用说明
+
+- 确认 Cobra 默认提供 `workspace completion` 命令，支持 `bash`、`fish`、`powershell`、`zsh`。
+- 更新 `README.md`，新增 Shell Completion 章节，覆盖 zsh、bash、fish、PowerShell 的补全脚本安装方式，并提示可查看各 shell 的 `workspace completion <shell> --help`。
+- 更新 GitHub Pages 首页，新增“补全”导航和自动补全说明区块，展示 zsh 与 fish 的常用配置命令，并在命令列表中补充 `workspace completion zsh`。
+- 新增 CLI 测试 `TestCompletionCommandIsAvailable`，通过执行 `workspace completion --help` 断言 completion 命令实际可用且列出四种 shell。

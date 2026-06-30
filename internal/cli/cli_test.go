@@ -58,6 +58,23 @@ func TestRootCommandIncludesDocumentedCommandSurface(t *testing.T) {
 	}
 }
 
+func TestCompletionCommandIsAvailable(t *testing.T) {
+	cmd := NewRootCommand()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"completion", "--help"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("completion --help error = %v\n%s", err, out.String())
+	}
+	for _, want := range []string{"bash", "fish", "powershell", "zsh"} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("completion help missing %q:\n%s", want, out.String())
+		}
+	}
+}
+
 func TestVersionCommandPrintsBuildMetadata(t *testing.T) {
 	cmd := NewRootCommand()
 	var out bytes.Buffer

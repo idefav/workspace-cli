@@ -65,6 +65,55 @@ workspace update
 
 `workspace update` 会查询 GitHub latest release，下载当前平台对应的包，校验 `checksums.txt` 后替换当前二进制。
 
+## Shell Completion
+
+workspace-cli 支持生成 bash、zsh、fish 和 PowerShell 的自动补全脚本。
+
+zsh：
+
+```zsh
+mkdir -p "$HOME/.zsh/completions"
+workspace completion zsh > "$HOME/.zsh/completions/_workspace"
+grep -q '.zsh/completions' "$HOME/.zshrc" 2>/dev/null || \
+  echo 'fpath=("$HOME/.zsh/completions" $fpath)' >> "$HOME/.zshrc"
+exec zsh
+```
+
+bash：
+
+```bash
+workspace completion bash > /usr/local/etc/bash_completion.d/workspace
+```
+
+如果没有 `/usr/local/etc/bash_completion.d` 写权限，可以改写到用户目录，并在 shell 启动文件中 source：
+
+```bash
+mkdir -p "$HOME/.local/share/bash-completion/completions"
+workspace completion bash > "$HOME/.local/share/bash-completion/completions/workspace"
+```
+
+fish：
+
+```bash
+mkdir -p "$HOME/.config/fish/completions"
+workspace completion fish > "$HOME/.config/fish/completions/workspace.fish"
+```
+
+PowerShell：
+
+```powershell
+workspace completion powershell >> $PROFILE
+```
+
+也可以查看对应 shell 的内置说明：
+
+```bash
+workspace completion zsh --help
+workspace completion bash --help
+workspace completion fish --help
+workspace completion powershell --help
+```
+
 ## Release
 
 推送符合 `v*.*.*` 的 tag 会触发 GitHub Actions 自动构建多平台包并发布 GitHub Release：
