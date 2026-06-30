@@ -215,3 +215,16 @@
 - 全量验证命令：`env GOCACHE=/private/tmp/workspace-cli-gocache GOMODCACHE=/private/tmp/workspace-cli-gomodcache GOSUMDB=off go test -count=1 ./...`，结果通过。
 - 静态检查命令：`env GOCACHE=/private/tmp/workspace-cli-gocache GOMODCACHE=/private/tmp/workspace-cli-gomodcache GOSUMDB=off go vet ./...`，结果通过。
 - CLI 构建验证：`env GOCACHE=/private/tmp/workspace-cli-gocache GOMODCACHE=/private/tmp/workspace-cli-gomodcache GOSUMDB=off go build -o /private/tmp/workspace-cli-ide/workspace ./cmd/workspace`，结果通过；`/private/tmp/workspace-cli-ide/workspace ide --help` 展示新命令说明。
+
+## Step 24: Base 分支同步语义补强
+
+- 明确“更新 master 最新代码”按 repo 注册时配置的 `base_branch` 处理，不固定为 `master`；`--base main` 使用 `origin/main`，`--base master` 使用 `origin/master`。
+- 确认现有实现已满足：`CreateRequirement` 和 `AddRepoToRequirement` 在创建 worktree 前执行 fetch，`workspace repo sync [name]` 对托管 bare repo 执行 fetch。
+- 新增 `TestCreateRequirementFetchesLatestBaseBranchBeforeWorktree`，覆盖 repo add 后远端 base branch 追加提交，创建需求时 worktree 使用最新 base commit。
+- 新增 `TestSyncRepoFetchesLatestBaseBranch` 和 `TestRepoSyncCommandFetchesSingleRepo`，覆盖 service 和 CLI 手动同步会刷新 `refs/remotes/<remote>/<base_branch>`。
+- 更新 `README.md`、需求规划和技术方案，说明创建需求会自动同步 base 最新代码，手动可用 `workspace repo sync [name]`。
+- 针对验证命令：`env GOCACHE=/private/tmp/workspace-cli-gocache GOMODCACHE=/private/tmp/workspace-cli-gomodcache GOSUMDB=off go test ./internal/workspace -run 'TestCreateRequirementFetchesLatestBaseBranchBeforeWorktree|TestSyncRepoFetchesLatestBaseBranch'`，结果通过。
+- CLI 针对验证命令：`env GOCACHE=/private/tmp/workspace-cli-gocache GOMODCACHE=/private/tmp/workspace-cli-gomodcache GOSUMDB=off go test ./internal/cli -run 'TestRepoSyncCommandFetchesSingleRepo'`，结果通过。
+- 全量验证命令：`env GOCACHE=/private/tmp/workspace-cli-gocache GOMODCACHE=/private/tmp/workspace-cli-gomodcache GOSUMDB=off go test -count=1 ./...`，结果通过。
+- 静态检查命令：`env GOCACHE=/private/tmp/workspace-cli-gocache GOMODCACHE=/private/tmp/workspace-cli-gomodcache GOSUMDB=off go vet ./...`，结果通过。
+- CLI 构建验证：`env GOCACHE=/private/tmp/workspace-cli-gocache GOMODCACHE=/private/tmp/workspace-cli-gomodcache GOSUMDB=off go build -o /private/tmp/workspace-cli-sync/workspace ./cmd/workspace`，结果通过；`/private/tmp/workspace-cli-sync/workspace repo sync --help` 展示现有同步命令说明。

@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"workspace-cli/internal/config"
@@ -131,6 +132,88 @@ func TestCreateRequirementWithDetectedBaseBranch(t *testing.T) {
 		RepoNames: []string{"backend"},
 	}); err != nil {
 		t.Fatalf("CreateRequirement() with detected base error = %v", err)
+	}
+}
+
+func TestCreateRequirementFetchesLatestBaseBranchBeforeWorktree(t *testing.T) {
+	ctx := context.Background()
+	remote := seedRemote(t)
+	home := t.TempDir()
+
+	cfg, err := config.Init(home)
+	if err != nil {
+		t.Fatalf("config.Init() error = %v", err)
+	}
+	db, err := store.Open(cfg.DBPath)
+	if err != nil {
+		t.Fatalf("store.Open() error = %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	if err := db.Migrate(ctx); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+
+	svc := NewService(cfg, db, gitx.NewManager(gitx.ExecRunner{}))
+	if _, err := svc.AddRepo(ctx, AddRepoParams{Name: "backend", URL: remote, Remote: "origin", BaseBranch: "main"}); err != nil {
+		t.Fatalf("AddRepo() error = %v", err)
+	}
+	latest := seedRemoteBaseCommit(t, remote, "main", "latest-base.txt", "latest from base\n")
+
+	req, err := svc.CreateRequirement(ctx, CreateRequirementParams{
+		Title:     "Payment Flow",
+		Key:       "pay-flow",
+		RepoNames: []string{"backend"},
+	})
+	if err != nil {
+		t.Fatalf("CreateRequirement() error = %v", err)
+	}
+	worktree := filepath.Join(req.WorkspacePath, "backend")
+	data, err := os.ReadFile(filepath.Join(worktree, "latest-base.txt"))
+	if err != nil {
+		t.Fatalf("expected worktree to include latest base file: %v", err)
+	}
+	if string(data) != "latest from base\n" {
+		t.Fatalf("latest base file = %q", data)
+	}
+	if got := strings.TrimSpace(runGitOutput(t, worktree, "rev-parse", "HEAD")); got != latest {
+		t.Fatalf("worktree HEAD = %s, want latest base %s", got, latest)
+	}
+}
+
+func TestSyncRepoFetchesLatestBaseBranch(t *testing.T) {
+	ctx := context.Background()
+	remote := seedRemote(t)
+	home := t.TempDir()
+
+	cfg, err := config.Init(home)
+	if err != nil {
+		t.Fatalf("config.Init() error = %v", err)
+	}
+	db, err := store.Open(cfg.DBPath)
+	if err != nil {
+		t.Fatalf("store.Open() error = %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	if err := db.Migrate(ctx); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+
+	svc := NewService(cfg, db, gitx.NewManager(gitx.ExecRunner{}))
+	repo, err := svc.AddRepo(ctx, AddRepoParams{Name: "backend", URL: remote, Remote: "origin", BaseBranch: "main"})
+	if err != nil {
+		t.Fatalf("AddRepo() error = %v", err)
+	}
+	latest := seedRemoteBaseCommit(t, remote, "main", "latest-sync.txt", "latest sync\n")
+	if got := strings.TrimSpace(runGitOutput(t, repo.BarePath, "rev-parse", "refs/remotes/origin/main")); got == latest {
+		t.Fatalf("test setup expected bare repo to be stale before sync, got %s", got)
+	}
+
+	if err := svc.SyncRepo(ctx, "backend"); err != nil {
+		t.Fatalf("SyncRepo() error = %v", err)
+	}
+
+	if got := strings.TrimSpace(runGitOutput(t, repo.BarePath, "rev-parse", "refs/remotes/origin/main")); got != latest {
+		t.Fatalf("refs/remotes/origin/main = %s, want %s", got, latest)
 	}
 }
 
@@ -975,6 +1058,21 @@ func seedRemoteFeatureBranch(t *testing.T, remote, branch string) {
 	runGit(t, seed, "add", "remote-feature.txt")
 	run(t, seed, "git", "-c", "user.name=Workspace Test", "-c", "user.email=workspace@example.com", "commit", "-m", "feature seed")
 	runGit(t, seed, "push", "origin", branch)
+}
+
+func seedRemoteBaseCommit(t *testing.T, remote, branch, filename, content string) string {
+	t.Helper()
+	root := t.TempDir()
+	seed := filepath.Join(root, "base-seed")
+	run(t, "", "git", "clone", remote, seed)
+	runGit(t, seed, "checkout", "-B", branch, "origin/"+branch)
+	if err := os.WriteFile(filepath.Join(seed, filename), []byte(content), 0o644); err != nil {
+		t.Fatalf("write %s: %v", filename, err)
+	}
+	runGit(t, seed, "add", filename)
+	run(t, seed, "git", "-c", "user.name=Workspace Test", "-c", "user.email=workspace@example.com", "commit", "-m", "base update")
+	runGit(t, seed, "push", "origin", branch)
+	return strings.TrimSpace(runGitOutput(t, seed, "rev-parse", "HEAD"))
 }
 
 func createRequirementWithRepo(t *testing.T, ctx context.Context) (config.Config, *store.DB, *Service, store.Requirement) {

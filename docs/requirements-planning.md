@@ -33,7 +33,7 @@ v1 只管理本地需求开发流程：创建需求、选择 repo、准备 workt
 
 - 注册 repo：指定名称、Git URL、remote 名称和 base branch。
 - 首次注册时 clone 为本地 bare repo。
-- 同步 repo：对 bare repo 执行 fetch。
+- 同步 repo：对 bare repo 执行 fetch，更新本地 remote tracking refs，例如 `refs/remotes/origin/main` 或 `refs/remotes/origin/master`。
 - 更新 repo 元数据：URL、remote、base branch；repo 被活跃或 cleanup-pending 需求引用时禁止修改这些字段，避免影响已创建 worktree 和清理流程。
 - 删除 repo：仅允许删除未被普通 active 或 cleanup-pending 需求使用的 repo，并通过 `deleted_at` 软删除，保留历史审计信息。
 - 列出所有未删除 repo，可通过 `repo list --all` 查看已删除 repo。
@@ -49,12 +49,12 @@ v1 只管理本地需求开发流程：创建需求、选择 repo、准备 workt
 
 ### 3.4 需求 workspace 创建
 
-- 创建需求前先同步相关 repo。
+- 创建需求前先同步相关 repo，确保配置的 base branch remote tracking ref 是最新状态。
 - 每个 repo 按 feature 分支选择规则准备 `feature/<req-slug>`。
 - 使用 git worktree 把多个 repo 集中到同一个需求 workspace。
 - 如果本地 feature 分支已存在且未被其他 worktree 占用，则复用该分支创建 worktree。
 - 如果远端 feature 分支已存在但本地不存在，则从 `<remote>/feature/<req-slug>` 创建本地分支并用于 worktree。
-- 如果本地和远端 feature 分支都不存在，则从 `<remote>/<base_branch>` 创建本地 feature 分支。
+- 如果本地和远端 feature 分支都不存在，则从最新的 `<remote>/<base_branch>` 创建本地 feature 分支；`base_branch` 来自 repo 注册配置，不固定为 `master`。
 - 如果 worktree path 已存在，或目标分支已被其他 worktree 占用，返回可恢复错误，不覆盖用户文件。
 
 ### 3.5 开发工具启动
@@ -108,7 +108,7 @@ v1 只管理本地需求开发流程：创建需求、选择 repo、准备 workt
 1. 用户运行 `workspace req create "支付链路优化" --key pay-flow --repo backend --repo frontend`。
 2. CLI 创建需求记录，slug 为 `pay-flow`，feature branch 为 `feature/pay-flow`。
 3. CLI 为每个初始 repo 写入绑定快照：`repo_name`、`repo_url`、`repo_remote`、`repo_base_branch`。
-4. CLI 为每个 repo fetch 最新代码。
+4. CLI 为每个 repo fetch 最新代码，更新对应 remote tracking refs。
 5. CLI 按本地 feature 分支、远端 feature 分支、base branch 的优先级创建或复用 feature 分支。
 6. CLI 在 `~/.workspace-cli/work/requirements/pay-flow/` 下创建多个 worktree。
 
@@ -150,6 +150,7 @@ v1 只管理本地需求开发流程：创建需求、选择 repo、准备 workt
 
 - 可以初始化一个全新的 workspace-cli home。
 - 可以注册并同步多个 Git repo。
+- 可以通过 `workspace repo sync [name]` 手动同步托管 repo 的 base branch remote tracking ref。
 - 可以创建一个绑定多个 repo 的需求。
 - 创建需求的初始 repo 和后续追加 repo 都写入一致的 repo 绑定快照。
 - 需求 workspace 下包含多个 repo 的 worktree。

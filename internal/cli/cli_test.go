@@ -144,6 +144,25 @@ func TestReqShowIncludesRepoSnapshots(t *testing.T) {
 	}
 }
 
+func TestRepoSyncCommandFetchesSingleRepo(t *testing.T) {
+	home := t.TempDir()
+	remote := seedRemote(t)
+
+	runWorkspace(t, home, "init")
+	runWorkspace(t, home, "repo", "add", "backend", remote, "--base", "main")
+	latest := seedRemoteBaseCommit(t, remote, "main", "latest-sync.txt", "latest sync\n")
+	barePath := filepath.Join(home, "work", "repos", "backend.git")
+	if got := strings.TrimSpace(runGitOutput(t, barePath, "rev-parse", "refs/remotes/origin/main")); got == latest {
+		t.Fatalf("test setup expected bare repo to be stale before sync, got %s", got)
+	}
+
+	runWorkspace(t, home, "repo", "sync", "backend")
+
+	if got := strings.TrimSpace(runGitOutput(t, barePath, "rev-parse", "refs/remotes/origin/main")); got != latest {
+		t.Fatalf("refs/remotes/origin/main = %s, want %s", got, latest)
+	}
+}
+
 func TestRepoListAllShowsSoftDeletedRepo(t *testing.T) {
 	home := t.TempDir()
 	remote := seedRemote(t)
@@ -365,6 +384,21 @@ func seedRemote(t *testing.T) string {
 	run(t, seed, "git", "-c", "user.name=Workspace Test", "-c", "user.email=workspace@example.com", "commit", "-m", "init")
 	runGit(t, seed, "push", "origin", "main")
 	return remote
+}
+
+func seedRemoteBaseCommit(t *testing.T, remote, branch, filename, content string) string {
+	t.Helper()
+	root := t.TempDir()
+	seed := filepath.Join(root, "base-seed")
+	run(t, "", "git", "clone", remote, seed)
+	runGit(t, seed, "checkout", "-B", branch, "origin/"+branch)
+	if err := os.WriteFile(filepath.Join(seed, filename), []byte(content), 0o644); err != nil {
+		t.Fatalf("write %s: %v", filename, err)
+	}
+	runGit(t, seed, "add", filename)
+	run(t, seed, "git", "-c", "user.name=Workspace Test", "-c", "user.email=workspace@example.com", "commit", "-m", "base update")
+	runGit(t, seed, "push", "origin", branch)
+	return strings.TrimSpace(runGitOutput(t, seed, "rev-parse", "HEAD"))
 }
 
 func runGit(t *testing.T, dir string, args ...string) {

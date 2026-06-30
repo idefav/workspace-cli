@@ -148,11 +148,11 @@ Git 操作统一封装在 `internal/git`：
 策略：
 
 - repo 注册时 clone 为 bare repo。
-- 创建或扩展需求前先 fetch。
+- 创建或扩展需求前先 fetch，更新托管 bare repo 的 remote tracking refs。
 - feature 分支名统一为 `feature/<req-slug>`。
 - 如果本地 feature 分支已存在且未被其他 worktree 占用，则直接基于该分支创建 worktree。
 - 如果远端 feature 分支已存在但本地不存在，则从 `<remote>/<feature-branch>` 创建本地分支并创建 worktree。
-- 如果本地和远端 feature 分支都不存在，则从 `<remote>/<base_branch>` 创建本地 feature 分支。
+- 如果本地和远端 feature 分支都不存在，则从最新的 `<remote>/<base_branch>` 创建本地 feature 分支；`base_branch` 来自 repo 注册配置，不固定为 `master`。
 - 如果 feature 分支已被其他 worktree 占用，或目标 worktree path 已存在，则返回可恢复错误，不覆盖用户文件。
 - push 使用 `git push <remote> HEAD:refs/heads/<feature-branch>`。
 - finish 前先对所有存在变更的 repo 检查 `user.name` 和 `user.email`；缺失时在任何 commit、push、cleanup 前失败，并输出对应 repo 的修复命令。
@@ -165,7 +165,7 @@ Git 操作统一封装在 `internal/git`：
 `internal/workspace.Service` 负责：
 
 - `AddRepo`：clone bare repo，探测 base branch，写入 repo 表。
-- `SyncRepo` / `SyncAllRepos`：fetch 托管 repo。
+- `SyncRepo` / `SyncAllRepos`：fetch 托管 repo，更新 `refs/remotes/<remote>/<base_branch>` 等 remote tracking refs；不修改已有需求 worktree，也不 rebase 已创建的 feature 分支。
 - `UpdateRepo`：更新 URL、remote、base branch，并同步 bare repo remote 配置；只更新 URL 时调用 `SetRemoteURL`，只更新 remote 时调用 `RenameRemote` 并保留原 URL，同时更新 remote 和 URL 时先 `RenameRemote` 再 `SetRemoteURL`；repo 被 active 或 cleanup-pending 需求引用时禁止修改 URL、remote、base branch。completed 历史需求展示使用绑定快照，不随 repo update 改变。
 - `RemoveRepo`：检查 repo 未被普通 active 或 cleanup-pending 需求引用后写入 `deleted_at`，保留历史记录和 bare repo 清理的后续扩展空间。
 - `CreateRequirement`：创建需求记录、为每个初始 repo 写入 `repo_name`、`repo_url`、`repo_remote`、`repo_base_branch` 绑定快照、准备 workspace、创建 worktree。
@@ -230,6 +230,8 @@ Git 集成测试：
 - `AddRepo` clone bare repo。
 - `CreateRequirement` 创建 feature worktree。
 - 本地 feature 分支、远端 feature 分支、base branch 三种创建路径。
+- `CreateRequirement` 在 repo add 后远端 base branch 又有新提交时，会先 fetch 并从最新 `<remote>/<base_branch>` 创建 worktree。
+- `SyncRepo` 能在远端 base branch 更新后刷新 bare repo 的 remote tracking ref。
 - 修改 worktree 文件。
 - `FinishRequirement` 在普通 active 路径 commit、push feature 分支、删除 worktree、标记完成归档。
 
@@ -258,6 +260,7 @@ CLI 测试：
 - `repo list` 默认隐藏 soft deleted repo，`repo list --all` 展示。
 - `req list --all` 同时展示 lifecycle status 和 archived 状态。
 - `workspace --home <path> repo list` 等任意子命令都使用指定 home。
+- `workspace repo sync <name>` 能刷新指定 repo 的 remote tracking ref。
 - `dev` 对未知工具返回错误。
 - `ide` 默认使用 `vscode`，把 requirement workspace path 作为最后一个参数传给 IDE 命令。
 - `ide --tool cursor|zed` 使用对应配置命令。

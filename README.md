@@ -49,6 +49,13 @@ go build -o workspace ./cmd/workspace
 ./workspace req finish pay-flow -m "feat: complete pay-flow"
 ```
 
+创建需求时，workspace-cli 会先同步每个 repo 配置的 base branch 最新代码，再创建 `feature/<req-slug>` worktree。也可以手动同步托管 repo：
+
+```bash
+workspace repo sync backend
+workspace repo sync
+```
+
 ## 打开 IDE
 
 默认使用 VS Code 打开需求 workspace：
