@@ -11,7 +11,8 @@ workspace-cli 是一个本地命令行工具，用来管理“需求开发空间
 - 为每个需求统一创建 `feature/<req-slug>` 分支。
 - 将多个 repo 的 worktree 集中放进同一个需求 workspace。
 - 从需求 workspace 启动 Codex、Claude Code，或用 VS Code/Cursor/Zed 打开 workspace。
-- 完成需求时自动检查、提交、推送、清理 worktree 并归档需求。
+- 完成需求开发时自动检查、提交、推送、清理 worktree，并让需求进入 ready/可集成阶段。
+- 将多个 ready 需求集成到可重建的 `release/<release-slug>` 分支，测试通过后发布到各 repo 的 base branch。
 - 使用 SQLite 记录 repo、需求、绑定快照、状态和失败操作日志。
 
 ## 安装与构建
@@ -47,6 +48,10 @@ go build -o workspace ./cmd/workspace
 ./workspace ide pay-flow
 
 ./workspace req finish pay-flow -m "feat: complete pay-flow"
+
+./workspace release create "2026-07-01 发布" --key 2026-07-01 --req pay-flow
+./workspace release integrate 2026-07-01
+./workspace release publish 2026-07-01 --tested -m "release: 2026-07-01"
 ```
 
 创建需求时，workspace-cli 会先同步每个 repo 配置的 base branch 最新代码，再创建 `feature/<req-slug>` worktree。也可以手动同步托管 repo：
@@ -55,6 +60,22 @@ go build -o workspace ./cmd/workspace
 workspace repo sync backend
 workspace repo sync
 ```
+
+当前版本中，`workspace req finish` 会完成需求 feature 分支的提交、推送和 worktree 清理，并将需求标记为 ready。需求最终 completed/archived 由 `workspace release publish --tested` 成功后写入。
+
+## Release 流程
+
+release 流程把多个 ready 需求集成到可重建的 release 分支；测试通过后，发布会把 release 分支合并到各 repo 的 base branch，并将 active 集成范围内的需求标记为 completed/archived。
+
+历史版本中已经通过 `workspace req finish` 完成的需求会保留为 legacy completed，不会在当前 Release 流程中自动视为 released，也不会自动进入 release 集成范围。
+
+```bash
+workspace release create "2026-07-01 发布" --key 2026-07-01 --req pay-flow
+workspace release integrate 2026-07-01
+workspace release publish 2026-07-01 --tested -m "release: 2026-07-01"
+```
+
+release 测试修复流程可以使用 `workspace req reopen <key-or-slug>` 恢复 feature worktree，修复后重新 `req finish`，再重新 `release integrate` 和测试。
 
 ## 打开 IDE
 

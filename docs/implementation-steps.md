@@ -6,13 +6,13 @@
 - 当前代码只有文档、`go.mod` 和测试文件，尚无生产实现。
 - 首次执行 `go test ./...` 因默认 Go cache 写入 `~/Library/Caches/go-build` 被沙箱拒绝失败；后续统一使用 `GOCACHE=/private/tmp/workspace-cli-gocache`。
 - 使用隔离 cache 执行 `go test ./...` 后进入预期红灯：缺少 `internal/config`、`internal/store`、`internal/git`、`internal/workspace` 的生产代码。
-- 现有测试中仍有旧状态模型断言，需校准为当前文档语义：需求完成后 `status=completed`，并写入 `completed_at` 与 `archived_at`。
+- 历史记录：当时测试曾按“finish 直接进入完成态”的旧模型校准；Step 25/26 已废弃该模型，Step 30 进一步收紧为 finish 写 `ready_at`、release publish 写 completed、released 由 published release active association 推导。
 
 ## Step 2: 配置与 SQLite store 基础实现
 
 - 新增 `internal/config` 的默认配置、初始化和加载能力；`Init` 会创建 `config.yaml`、`workspace.db`、`work/repos`、`work/requirements`。
 - 新增 `internal/store` 的 SQLite 迁移和基础 CRUD，包含 `repos`、`requirements`、`requirement_repos`、`operation_logs`。
-- `requirement_repos` 在绑定时写入 repo 快照字段；需求完成写入 `status=completed`、`completed_at`、`archived_at`。
+- `requirement_repos` 在绑定时写入 repo 快照字段；历史实现曾在 finish 后直接写完成态字段，Step 25/26 已将目标语义改为 release publish 后写入。
 - 新增 `modernc.org/sqlite` 依赖并生成 `go.sum`；由于沙箱限制，依赖解析使用 `GOMODCACHE=/private/tmp/workspace-cli-gomodcache` 和 `GOSUMDB=off`。
 - 验证命令：`env GOCACHE=/private/tmp/workspace-cli-gocache GOMODCACHE=/private/tmp/workspace-cli-gomodcache GOSUMDB=off go test ./internal/config ./internal/store`，结果通过。
 
@@ -35,7 +35,7 @@
 
 ## Step 5: cleanup-pending finish 重试测试
 
-- 新增集成测试覆盖 `pushed` relation 的 worktree path 已缺失时，`FinishRequirement` 自愈为 relation `completed` 并完成需求归档。
+- 新增集成测试覆盖 `pushed` relation 的 worktree path 已缺失时，`FinishRequirement` 自愈为 relation `completed`；历史实现随后走旧归档路径，Step 25/26 已将目标语义改为写入 `ready_at`。
 - 新增集成测试覆盖 cleanup-pending worktree 存在未提交变更时，`FinishRequirement` 返回错误且保留 worktree。
 - 验证命令：`env GOCACHE=/private/tmp/workspace-cli-gocache GOMODCACHE=/private/tmp/workspace-cli-gomodcache GOSUMDB=off go test ./internal/workspace`，结果通过。
 - 全量验证命令：`env GOCACHE=/private/tmp/workspace-cli-gocache GOMODCACHE=/private/tmp/workspace-cli-gomodcache GOSUMDB=off go test ./...`，结果通过。
@@ -104,7 +104,7 @@
 - 普通 active 路径先完成所有 repo 的状态检查、commit 身份预检、commit 和 push；只有全部 push 成功后，使用事务批量将 relation 状态写为 `pushed`。
 - cleanup-pending 路径不执行 commit/push；遇到仍为 `active` 的 relation 时返回可恢复错误并保留 cleanup-pending 状态。
 - cleanup 重试时先显式检查 worktree path：不存在则自愈为 `completed`；存在但 `HasChanges` 失败则写 `cleanup_failed` 和 operation log，并停止删除；dirty worktree 拒绝删除且保留原状态。
-- 完成前重新读取 relation，只有全部 relation 都为 `completed` 才写入需求 `status=completed`、`completed_at`、`archived_at`。
+- 历史实现完成前重新读取 relation，并在旧模型中直接写完成态字段；Step 25/26 已将目标语义改为 finish 只写 `ready_at`。
 - 补充测试覆盖 cleanup-pending 不 commit/push active relation、status 检查失败不删除 worktree、completed-but-unarchived 不可修改、cleanup-pending 修改锁和 repo update/remove 拒绝、remote+URL 同时更新。
 - 针对验证命令：`env GOCACHE=/private/tmp/workspace-cli-gocache GOMODCACHE=/private/tmp/workspace-cli-gomodcache GOSUMDB=off go test ./internal/workspace -run 'TestFinishCleanupPendingDoesNotCommitOrPushActiveRelations|TestFinishCleanupPendingStopsWhenStatusCheckFails|TestFinishCleanupPendingSelfHealsMissingWorktree|TestFinishCleanupPendingRejectsDirtyWorktree'`，结果通过。
 - 全量验证命令：`env GOCACHE=/private/tmp/workspace-cli-gocache GOMODCACHE=/private/tmp/workspace-cli-gomodcache GOSUMDB=off go test ./...`，结果通过。
@@ -228,3 +228,211 @@
 - 全量验证命令：`env GOCACHE=/private/tmp/workspace-cli-gocache GOMODCACHE=/private/tmp/workspace-cli-gomodcache GOSUMDB=off go test -count=1 ./...`，结果通过。
 - 静态检查命令：`env GOCACHE=/private/tmp/workspace-cli-gocache GOMODCACHE=/private/tmp/workspace-cli-gomodcache GOSUMDB=off go vet ./...`，结果通过。
 - CLI 构建验证：`env GOCACHE=/private/tmp/workspace-cli-gocache GOMODCACHE=/private/tmp/workspace-cli-gomodcache GOSUMDB=off go build -o /private/tmp/workspace-cli-sync/workspace ./cmd/workspace`，结果通过；`/private/tmp/workspace-cli-sync/workspace repo sync --help` 展示现有同步命令说明。
+
+## Step 25: 集成与发布流程文档设计
+
+- 本次只更新文档，不实现 Go 代码、不修改 schema、不新增 CLI 实现。
+- 更新需求规划，将目标流程调整为：需求 feature 开发完成后进入可集成状态，多个需求集成到 `release/<release-slug>`，测试通过后发布到每个 repo 配置的 `base_branch`。
+- 明确 release branch 是可重建产物；需求加入、需求移出、需求 feature SHA 变化或目标分支出现新 commit 都会让 release stale，必须重新 integrate 并重新测试。
+- 明确 release 测试发现 bug 时，必须回 feature 分支修复，再重新完成 feature 开发和 release integrate；不把 release worktree 的直接修改作为正式修复来源。
+- 更新技术方案，新增 `workspace release create/list/show/add-req/remove-req/status/integrate/publish` 命令面、release workspace 目录、release 状态模型、SQLite 表设计、Git 删除重建策略、commit graph 发布检查和测试方案。
+- 明确发布目标分支使用 repo 配置的 `base_branch`，业务上可称为 master，但实现不硬编码 `master`。
+- 明确 publish 判断目标分支是否有新代码只看 commit SHA / commit graph，不读取 MR/PR 记录；publish 成功后 active 集成范围内需求写入 `status=completed`、`completed_at` 和 `archived_at`。
+
+## Step 26: Release 方案 Review 后补漏
+
+- 本次只修复文档和公共说明，不实现 Go 代码、不修改当前 schema 或 CLI 实现。
+- 当时曾按两阶段目标调整 README；Step 27 已重新区分当前已实现命令和规划中的 release/reopen 命令，避免 README 误导用户执行未实现能力。
+- 补充 `workspace req reopen <key-or-slug>` 方案：ready 需求可恢复 feature worktree，清空 `ready_at`，回到普通 active 修复；active 集成范围包含该需求的未发布 release 标记为 stale。
+- 补充 release dirty guard：publish 前 release worktree 必须干净；integrate 删除旧 release worktree 前默认拒绝 dirty，`--force` 才表示丢弃临时测试修改。
+- 补充 publish 部分成功重试：已成功 repo 记录 `release_repos.status=published` 和 `published_sha`，retry 跳过已成功 repo，目标分支等于 `published_sha` 不算外部新 commit。
+- 补充 `req list/show` 的推导 `stage=active|cleanup-pending|ready|completed` 展示，避免 ready 需求被误认为普通 active。
+- 补充 Git 原语使用语义：`force-with-lease` 使用 fetch 后的 expected SHA，merge 冲突保留 release worktree 诊断现场，下一次 integrate 负责删除并重建。
+
+## Step 27: Release 方案 Review 集成修复
+
+- 本次只修复文档和公共说明，不实现 Go 代码、不修改当前 schema 或 CLI 实现。
+- README 快速开始在当时恢复为已实现路径：`init -> repo add -> req create -> dev/ide -> req finish`；`workspace release ...` 和 `workspace req reopen` 当时只保留在“规划中的 Release 流程”小节，并明确标注当时版本尚未实现。
+- 需求规划补齐 publish 临时 worktree、`published_sha` retry、repo update/remove 锁定、`req reopen` Git 来源和 failed release 可重试语义。
+- 技术方案补齐 versioned migration/backfill：旧 `v0.1.0` DB 增加 `requirements.ready_at`，旧 completed/active 数据保持原语义；`MarkRequirementCompleted` 只能由 `PublishRelease` 成功路径调用。
+- 技术方案新增 publish 临时 worktree 路径 `~/.workspace-cli/work/releases/<release-slug>/.publish/<repo>`，dirty guard 同时覆盖 release worktree 和 `.publish/<repo>`。
+- publish 部分成功 retry 改为使用 `published_sha`：已发布 repo 先校验目标分支 HEAD 等于 `published_sha` 才跳过；该记录中的不相等处理已在 Step 28 收紧为阻塞人工处理。
+- repo update/remove 在被普通 active、cleanup-pending、ready 需求或未 published release 引用时都禁止执行；released 与 legacy completed 历史展示继续使用 repo 绑定快照。
+- `req reopen` 展示使用 repo 快照，实际 Git 操作通过 `repo_id` 读取当前托管 repo；repo 已软删、bare repo 缺失、feature 分支占用或 worktree path 已存在时返回可恢复错误。
+- failed release 允许重新 integrate，published release 禁止重新 integrate；merge 冲突保留诊断 worktree，下一次 integrate 按 dirty/force 规则删除并重建。
+- 文档一致性搜索：`rg -n "workspace release|workspace req reopen|规划中|尚未实现|ready_at|published_sha|\\.publish|MarkRequirementCompleted|failed" README.md docs/requirements-planning.md docs/technical-implementation-plan.md docs/implementation-steps.md`，确认 README 的 release/reopen 命令只出现在规划语境。
+- 静态检查命令：`git diff --check`，结果通过。
+- 当前代码健康检查命令：`env GOCACHE=/private/tmp/workspace-cli-gocache GOMODCACHE=/private/tmp/workspace-cli-gomodcache GOSUMDB=off go test -count=1 ./...`，结果通过。
+
+## Step 28: Release 文档 Review 迁移边界修复
+
+- 本次只修复文档和公共说明，不实现 Go 代码、不修改当前 schema 或 CLI 实现。
+- README 在当时规划中的 Release 流程补充迁移边界：两阶段语义会与 `workspace release ...` 和 `workspace req reopen` 同批发布，不会单独改变当时的 `workspace req finish` 行为。
+- 需求规划当时明确 release 功能里程碑必须一次性交付 `ready_at`、`req reopen`、`release create/integrate/publish`；在这些命令实现前，当时 finish 仍保持 completed/archive 体验。
+- 补充 publish-in-progress 推导态：任一 repo 已 `published` 且 release 尚未整体 published 时，只允许 `show/status/publish retry`，拒绝 `add-req`、`remove-req` 和 `integrate`。
+- 收紧部分发布 retry：已发布 repo 的目标分支 HEAD 等于 `published_sha` 才跳过；不相等时阻塞并要求人工处理，不允许重新 integrate 覆盖已发布 repo。
+- 补充 `req reopen` all-or-nothing：先完成所有 repo 可行性预检，任一 worktree 创建失败时清理本次已创建 worktree，并保持 `ready_at`、relation status 和 release stale 状态不变。
+- 补充 publish 临时 worktree 恢复规则：`.publish/<repo>` 不存在则创建，干净 worktree 则 reset，dirty worktree 或非 worktree 路径则拒绝 publish。
+- 技术方案明确 future Go 落点：`store.Requirement` 增加 `ReadyAt sql.NullTime`，所有 requirement SELECT、scanner、CRUD 和 CLI `req list/show` 输出都纳入 `ready_at` 和推导 `stage`。
+- 文档一致性搜索：`rg -n 'release 功能里程碑|publish-in-progress|ready_at|ReadyAt|all-or-nothing|\\.publish|MarkRequirementCompleted|workspace release|workspace req reopen' README.md docs/requirements-planning.md docs/technical-implementation-plan.md docs/implementation-steps.md`，确认关键语义已覆盖。
+- 旧语义残留搜索：检查旧的“第一阶段迁移”、单独提前发布 ready-only、以及已发布 repo 偏离 `published_sha` 后继续走 commit graph 的表述，未发现旧语义残留。
+- 静态检查命令：`git diff --check`，结果通过。
+- 当前代码健康检查命令：`env GOCACHE=/private/tmp/workspace-cli-gocache GOMODCACHE=/private/tmp/workspace-cli-gomodcache GOSUMDB=off go test -count=1 ./...`，结果通过。
+
+## Step 29: Release 文档状态机修复
+
+- 本次只修复文档和公共说明，不实现 Go 代码、不修改当前 schema 或 CLI 实现。
+- README 补充历史兼容说明：当前版本已经 `req finish` 的需求会保留为 legacy completed，不会在 Release 里程碑中自动视为 released，也不会自动进入 release 集成范围。
+- 需求规划拆分当前已实现本地需求开发流程与后续 Release 里程碑目标，避免把 `ready_at`、`release`、`req reopen` 写成当前可用能力。
+- 技术方案把旧库 `status=completed` 定义为 legacy completed：不可修改、默认隐藏、不自动变 ready、不自动纳入 release、不自动标记 released。
+- 明确 released 是推导语义：只有 completed 需求存在 published release active association 时才展示为 released，不新增 `completed_source` 字段。
+- 明确 publish-in-progress 优先级高于 stale：只允许 `show/status/publish retry`，拒绝 `add-req`、`remove-req`、`integrate` 和相关需求 `reopen`。
+- publish-in-progress 中若 feature SHA、目标分支 HEAD、active 集成范围变化，或已发布 repo HEAD 偏离 `published_sha`，阻塞并展示人工处理提示，不自动走 stale/reintegrate。
+- 更新测试方案，覆盖 legacy completed 迁移、publish-in-progress 人工阻塞、相关需求 reopen 拒绝和非 publish-in-progress stale/reintegrate 正常路径。
+
+## Step 30: Release 文档 active association 补丁
+
+- 本次只修复文档，不实现 Go 代码、不修改 schema、不新增 CLI。
+- 明确不新增 `completed_source` 或 membership 字段，继续使用 `release_requirements.removed_at IS NULL` 作为唯一 active release association 定义。
+- 需求规划补充 active 集成范围概念：已写入 `removed_at` 的需求只保留历史记录，不参与后续 integrate、publish 或 released 推导。
+- 技术方案同步约束 `IntegrateRelease`、`ReleaseStatus` 和 `PublishRelease`：三者都只处理 `removed_at IS NULL` 的 active requirements；`ShowRelease/ReleaseStatus` 需要同时展示 active requirements 和 removed history。
+- `PublishRelease` 成功后只将 active requirements 写入 completed/archived；被 `remove-req` 软移出的需求不会随该 release publish 变成 completed 或 released。
+- 测试方案补充 removed requirement 不参与 integrate/publish/released 推导，并把 add/remove 后 stale 的断言限定为非 publish-in-progress release。
+- publish-in-progress release 继续锁定 add-req、remove-req、integrate 和相关 req reopen，只允许 show/status/publish retry。
+
+## Step 31: Release 文档集成补漏修复
+
+- 本次只修复文档，不实现 Go 代码、不修改当前 schema 或 CLI。
+- 技术方案为 `release_requirement_repos` 增加 `release_requirement_id`，指向具体 `release_requirements.id`，解决同一需求 remove 后 re-add 的 feature SHA 快照归属歧义。
+- 明确 `release_requirements` 允许保留 removed history，但同一 release 同一 requirement 同一时间只能有一个 active association；后续实现使用 `release_id, requirement_id WHERE removed_at IS NULL` 的 partial unique index 约束。
+- 明确 `release_repos` 和 `release_requirement_repos` 是 latest integrate 快照表，不是 append-only audit；每次非 publish-in-progress integrate 都按 active repo union 删除并重建快照。
+- `PublishRelease` 前必须校验 `release_repos` 与 active repo union 一致；不一致时非 publish-in-progress release 标记 stale，publish-in-progress release 阻塞人工处理。
+- 迁移方案补齐 `schema_migrations(version, name, applied_at)`、`0001_baseline_v0_1_0` 和 `0002_ready_release_flow`，并要求事务内幂等执行。
+- 需求规划补充：移出需求独占的 repo 会在下一次 integrate 后退出 release repo scope；移出后再次加入同一需求会生成新的 membership。
+
+## Step 32: Release 基础流程实现
+
+- 新增 versioned migration：`schema_migrations`、`0001_baseline_v0_1_0`、`0002_ready_release_flow`；`requirements.ready_at`、release 相关表、`release_requirement_id` 和 active membership partial unique index 已落库。
+- `workspace req finish` 调整为提交、推送、清理 worktree 后写入 `ready_at`；需求最终 `completed_at`、`archived_at` 由 `workspace release publish --tested` 成功后写入。
+- 新增 `workspace req reopen`：ready 需求可恢复 feature worktree，成功后清空 `ready_at` 并把 relation 状态恢复为 `active`。
+- 新增 release 命令基础链路：`create/list/show/status/add-req/remove-req/integrate/publish`；`integrate` 会重建 release worktree、按 active membership 顺序 merge feature 分支、写最新快照并推送 `release/<slug>`；`publish` 会使用 `.publish/<repo>` 临时 worktree 合并到 base branch，并完成 active requirements。
+- 已覆盖测试：schema migration、legacy completed 兼容、membership remove/re-add、CLI release happy path、release integrate/publish Git 集成、finish 后 ready stage 展示、reopen worktree 恢复。
+- 验证命令：`go test -count=1 ./...`、`go vet ./...`、`git diff --check`，结果通过。
+
+## Step 33: Release Review 集成问题修复
+
+- 修复 ready 需求可变更漏洞：`UpdateRequirement` 和 `AddRepoToRequirement` 统一通过 `ready_at` guard 拒绝 ready 需求，避免 release 集成范围被绕过修改。
+- 修复 `workspace release status` 只读旧状态的问题：CLI status 与 show 一样调用 `RefreshReleaseStatus`，并输出 active/removed requirements、repo publish 状态、base/release SHA、`published_sha` 和 feature SHA 快照。
+- 修复 `workspace release publish -m` 不生效的问题：publish 阶段使用 `MergeNoFF`，将 release branch 以用户提供的 message 合并到 base branch。
+- 补充 release 失败日志入口：新增 `LogReleaseOperation`，publish push 失败会写入 `release_operation_logs`，用于部分发布失败后的诊断。
+- 收紧 release branch 强推：`ForcePushBranch` 接受 integrate 前 fetch 到的 expected SHA，并使用显式 `--force-with-lease=refs/heads/<branch>:<expected-sha>`。
+
+## Step 34: Release 状态展示与引用锁补强
+
+- `workspace release status/show` 增加 diagnostics 输出：始终展示 `publish-in-progress` 推导值；非 publish-in-progress 的 stale release 展示 `stale` 原因；publish-in-progress 中 feature/base/scope 变化展示 `manual` 原因，避免误导用户重新 integrate 覆盖已发布 repo。
+- `ReleaseDiagnostics` 复用 active membership、repo union、feature SHA、target branch HEAD 和 `published_sha` 规则，只读计算展示原因，不改变 release status。
+- `repo update/remove` 增加未发布 release 引用检查：repo 被 `release_requirements.removed_at IS NULL` 的 active membership 或当前 `release_repos` 快照引用，且 release 尚未 `published` 时拒绝修改或软删除。
+- 补充测试覆盖：publish-in-progress 下已发布 repo target branch 偏离 `published_sha` 时 `release status` 输出 manual reason；非 publish-in-progress feature 变化时输出 stale reason；异常数据中 repo 被未发布 release 引用时 update/remove 被拒绝。
+
+## Step 35: Publish 临时路径恢复规则补强
+
+- `release publish` 在复用 `.publish/<repo>` 路径前先确认该路径是 Git worktree；若普通目录或其它非 worktree 路径占用，返回可恢复错误并提示用户移走或删除该路径。
+- 非 worktree `.publish/<repo>` 不会被 reset、删除或覆盖，也不会把 release 状态标记为 failed，保持用户可自行修复后重试。
+- 补充集成测试覆盖：`.publish/<repo>` 被普通目录占用时 publish 拒绝，release 仍保持 integrated。
+
+## Step 36: Release Review 恢复路径与展示补强
+
+- 修复 publish 首个 repo 失败后的重试卡死：publish 阶段失败写入 `release_operation_logs`，但尚无 repo 成功发布时 release 保持 `integrated`，修复外部原因后可直接 retry；部分成功仍通过 `release_repos.status=published` 推导 publish-in-progress。
+- 修复 `req reopen` DB 更新失败后的半恢复风险：relation 回 active、清空 `ready_at`、标记相关 release stale 在 store 层事务内完成；事务失败时服务层清理本次已创建 worktree，保持 ready 状态不变。
+- 增加 completed requirement 的 completion 推导：存在 published release active association 时展示 `released`，否则展示 `legacy-completed`；`req list --all` 和 `req show` 均输出该语义。
+- `workspace release list` 现在复用 `RefreshReleaseStatus`，非 published release 在列表输出前刷新 stale 状态，避免 feature/base 变化后仍显示旧 `integrated`。
+- 补充测试覆盖：首 repo publish 失败可重试、reopen DB 失败 all-or-nothing、released vs legacy completed 推导、release list 刷新 stale。
+
+## Step 37: Publish 目标分支 commit graph 判断
+
+- 新增 `internal/git.Manager.HasNewCommitsSince(barePath, remote, branch, oldSHA)`，通过 `git rev-list --count <oldSHA>..<remote>/<branch>` 判断目标分支是否出现外部新 commit。
+- `PublishRelease`、`RefreshReleaseStatus` 和 `ReleaseDiagnostics` 对未发布 repo 使用 commit graph 判断，不再用目标分支 HEAD 与 `integrated_base_sha` 裸相等判断，避免目标分支回退但没有新 commit 时误判 stale。
+- 已发布 repo 仍使用目标分支 HEAD 与 `published_sha` 精确相等校验，保证 publish-in-progress 的人工处理语义不变。
+- 补充测试覆盖：`HasNewCommitsSince` 对 unchanged/new commit/rewind 的判断，以及目标分支回退但无新 commit 时 release publish 仍可继续。
+- 补齐文档列出的 Git 原语 `Checkout` 和 `ResetHard`，并用集成测试覆盖 branch checkout 与 tracked file reset 行为。
+
+## Step 38: Publish 失败 repo 状态落库
+
+- 修复 release publish 失败 repo 状态不落库的问题：非已发布 repo 在 fetch、merge、push、post-push fetch 或 published SHA 读取失败时，写入 `release_repos.status=failed` 并保留 release operation log。
+- 首个 repo publish 失败时 release 仍保持 `integrated`，但 repo 行展示为 `failed`，修复外部原因后再次 publish 会继续处理该 failed repo。
+- 部分成功场景中，已成功 repo 保持 `published` 和 `published_sha`；失败 repo 记为 `failed`，retry 跳过已发布 repo 并继续发布 failed repo。
+- 补充 focused 集成测试覆盖首 repo 失败与第二 repo 失败两条 retry 路径，并同步需求规划和技术方案中的失败状态描述。
+
+## Step 39: Publish push 成功但 DB 标记失败自愈
+
+- 补充 publish 恢复路径：如果目标分支已经被上一次 publish push 到发布 merge commit，但本地 `release_repos.status=published` 或 `published_sha` 写入失败，下一次 publish 不再误判为普通外部新 commit。
+- 新增 `internal/git.Manager.CommitHasParentBare`，读取目标分支 HEAD 的父提交；只有当前目标分支 HEAD 的父提交包含本 release SHA 时，才补写该 repo 的 `published` 和 `published_sha`。
+- 该自愈条件刻意不使用“release SHA 是祖先”作为判断，避免目标分支在发布 merge 后又有外部新 commit 时被误吞。
+- 补充集成测试用 SQLite trigger 强制 published 状态写入失败，验证远端已 push、DB 未标记时 retry 可以补写状态、完成 release 和 requirement。
+
+## Step 40: CreateRelease 失败清理
+
+- 修复 `CreateRelease` 初始 membership 写入中途失败后留下 draft release 的问题。
+- 新增 `store.DeleteRelease`，按 release id 删除 release operation log、repo 快照、feature SHA 快照、membership 和 release row，用于创建失败清理。
+- `CreateRelease` 在任一初始 `release_requirements` 写入失败时调用 cleanup，并删除本次创建的 release workspace 空目录。
+- 补充单元测试用 SQLite trigger 强制第二个 membership 插入失败，验证失败后不留下 release row 或 partial membership。
+
+## Step 41: Release CLI 成功输出
+
+- `workspace release integrate <release>` 成功后输出 release key、status、workspace path 和 release branch，方便用户直接看到测试目录与分支。
+- `workspace release publish <release> --tested` 成功后输出 release key 和 published status。
+- 补充 CLI 测试覆盖 integrate/publish 成功输出，避免成功路径静默偏离技术方案。
+
+## Step 42: Publish 临时 worktree 覆盖补强
+
+- 补齐 `.publish/<repo>` 临时 worktree 的 clean-existing 与 dirty 行为测试。
+- dirty publish worktree 会拒绝 publish，不 push 目标分支，release 保持 integrated。
+- 已存在且干净的 publish worktree 可被 publish 恢复/重建并继续发布。
+- 结合既有非 worktree 路径测试，覆盖技术方案中 `.publish/<repo>` 的不存在、干净 worktree、dirty worktree、非 worktree 路径四类状态。
+
+## Step 43: 移出需求后的 obsolete repo worktree 清理
+
+- 修复 release 移出需求后重新 integrate 只更新 DB repo scope、但旧独占 repo release worktree 仍留在 workspace 的问题。
+- `IntegrateRelease` 会读取上一轮 `release_repos` 快照，计算不再属于 active repo union 的 obsolete repo，执行 dirty guard 后删除旧 release worktree 和本地 release branch。
+- 补充集成测试覆盖：release 包含 backend/frontend 两个需求，移出 frontend-only 需求后重新 integrate，`release_repos` 只剩 backend，frontend release worktree 被删除。
+
+## Step 44: Release publish Review 补漏
+
+- 修复 `CreateRequirement` service 层缺少 repo 数量校验的问题；即使绕过 CLI 直接调用 service，也必须至少绑定一个 repo，且失败时不创建 requirement row。
+- 修复 publish-in-progress retry 跳过已 published repo dirty guard 的问题；retry 时已发布 repo 的 release worktree 和 `.publish/<repo>` 仍必须保持干净，否则阻止继续发布剩余 repo。
+- 修复 `.publish/<repo>` 干净 worktree 的恢复语义：存在且干净时原地 `reset --hard` 到最新目标分支，不再删除重建。
+- 修复 release 最终完成落库的原子性：所有 repo 发布成功后，通过 store 事务同时写 release published 和 active requirements completed/archived；若最终落库失败，不会部分完成需求。
+- 将 release 级 `target_branch` summary 值改为 `per-repo`，并在技术方案中明确实际发布目标以 `release_repos.target_branch` 为准。
+- 补充 focused 测试覆盖：空 repo 创建需求、已发布 repo dirty 后 retry、publish finalization DB 失败不部分完成、干净 publish worktree 原地 reset。
+
+## Step 45: Publish 前 release branch 完整性校验
+
+- 修复 release branch 在 integrate 后被外部改写仍可能被 publish 合并的问题：`PublishRelease` 在真正 merge/push 目标分支前，会校验尚未发布 repo 的远端 `release/<release-slug>` HEAD 等于 `release_repos.release_sha`。
+- 若远端 release branch HEAD 与已测试的 `release_sha` 不一致，非 publish-in-progress release 标记 stale 并要求重新 integrate；publish-in-progress release 阻塞并提示人工处理，避免覆盖已发布 repo。
+- 保留 DB 写 published 状态失败后的自愈路径：如果目标分支已经是包含本次 `release_sha` 的发布 merge commit，则先补写 `published_sha`，不因 release branch 后续漂移误挡同一次发布恢复。
+- 补充 TDD 回归测试：先证明外部 force-push release branch 后旧实现会误发布，再加入 release SHA 预检，验证 publish 拒绝且不 push 未测试内容到 base branch。
+- 追加 status/show 覆盖：`RefreshReleaseStatus` 和 `ReleaseDiagnostics` 复用同一 release branch SHA 检查，远端 release branch 漂移时非 publish-in-progress release 会变 stale，并在 diagnostics 中展示 release branch 原因。
+- 追加 active membership 健康检查：status/publish 发现 active 集成范围内需求已经不再 ready 或 relation 不再 completed 时，非 publish-in-progress release 标记 stale，publish-in-progress release 阻塞人工处理；补充测试覆盖同一 ready 需求被两个 release 引用、其中一个发布后另一个 release 自动变 stale。
+
+## Step 46: Draft release 范围变更状态修复
+
+- 修复 draft release 执行 `add-req`、`remove-req` 后被错误标记为 stale 的问题；draft 尚未产生集成结果，范围变更后仍保持 draft。
+- 修复 `req reopen` 会把包含该需求的 draft release 标记为 stale 的问题；只有已有集成结果的未发布 release 才在 reopen 后进入 stale。
+- 已 integrated/stale/failed 且非 publish-in-progress 的 release 范围变化仍会标记 stale，publish-in-progress 继续拒绝 add/remove/reopen。
+- 补充 TDD 测试覆盖：draft add/remove/re-add 保持 draft、integrated add/remove 变 stale、draft release 中的 ready requirement reopen 后 release 仍保持 draft。
+
+## Step 47: Release list 发布中状态展示
+
+- 修复 `workspace release list` 只输出 DB status、无法从列表识别 publish-in-progress 的问题。
+- `release list` 现在输出 key、DB status、推导 phase 和 title；当任一 repo 已 published 且 release 尚未整体 published 时，phase 显示为 `publish-in-progress`，否则 phase 等于 status。
+- 保留 `release show/status` 的详细 diagnostics 输出，用于展示 stale/manual 原因、repo SHA、feature SHA 和 per-repo publish 状态。
+- 补充 CLI 回归测试：部分发布失败后，`workspace release list` 必须包含 `integrated	publish-in-progress`。
+
+## Step 48: Release membership 原子性与 cleanup-pending 工具入口修复
+
+- 修复非 draft release 执行 `add-req` / `remove-req` 时 membership 变更和 release 标记 stale 分两步写入的问题。
+- 新增 store 层事务方法，确保非 draft release 的 membership 变更和 stale 状态更新要么同时成功，要么同时回滚。
+- 补充回归测试：强制 release status 更新失败时，`add-req` 不留下新 active membership，`remove-req` 不提前写入 `removed_at`。
+- 修复 cleanup-pending 需求仍可通过 `workspace dev` / `workspace ide` 启动外部工具的问题；CLI 现在在启动前检查 requirement stage，并提示继续执行 `workspace req finish <req>` 完成清理。
+- 补充 CLI 回归测试：cleanup-pending 需求执行 `dev` 或 `ide` 会拒绝启动，fake Codex/IDE 命令不会被调用。
+- 补充 CreateRelease all-or-nothing 细节：release row 插入失败时删除本次创建的 release workspace 空目录，并用 SQLite trigger 回归测试覆盖该失败窗口。

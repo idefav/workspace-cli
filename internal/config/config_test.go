@@ -20,6 +20,9 @@ func TestInitCreatesDefaultConfigAndDirectories(t *testing.T) {
 	if cfg.WorkDir != filepath.Join(home, "work") {
 		t.Fatalf("WorkDir = %q", cfg.WorkDir)
 	}
+	if cfg.ReleaseDir != filepath.Join(home, "work", "releases") {
+		t.Fatalf("ReleaseDir = %q", cfg.ReleaseDir)
+	}
 
 	for _, path := range []string{
 		filepath.Join(home, "config.yaml"),
@@ -27,6 +30,7 @@ func TestInitCreatesDefaultConfigAndDirectories(t *testing.T) {
 		filepath.Join(home, "work"),
 		filepath.Join(home, "work", "repos"),
 		filepath.Join(home, "work", "requirements"),
+		filepath.Join(home, "work", "releases"),
 	} {
 		if _, err := os.Stat(path); err != nil {
 			t.Fatalf("expected %s to exist: %v", path, err)

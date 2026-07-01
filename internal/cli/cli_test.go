@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"workspace-cli/internal/store"
 )
 
 func TestInitCommandCreatesHomeAndDatabase(t *testing.T) {
@@ -51,6 +53,15 @@ func TestRootCommandIncludesDocumentedCommandSurface(t *testing.T) {
 		{"req", "add-repo"},
 		{"req", "archive"},
 		{"req", "finish"},
+		{"req", "reopen"},
+		{"release", "create"},
+		{"release", "list"},
+		{"release", "show"},
+		{"release", "add-req"},
+		{"release", "remove-req"},
+		{"release", "status"},
+		{"release", "integrate"},
+		{"release", "publish"},
 		{"dev"},
 	} {
 		if _, _, err := cmd.Find(path); err != nil {
@@ -182,7 +193,7 @@ func TestRepoListAllShowsSoftDeletedRepo(t *testing.T) {
 	}
 }
 
-func TestReqListAllShowsCompletedAndArchived(t *testing.T) {
+func TestReqListShowsReadyRequirementAfterFinish(t *testing.T) {
 	home := t.TempDir()
 	remote := seedRemote(t)
 
@@ -191,17 +202,18 @@ func TestReqListAllShowsCompletedAndArchived(t *testing.T) {
 	runWorkspace(t, home, "req", "create", "Payment Flow", "--key", "pay-flow", "--repo", "backend")
 
 	activeOut := runWorkspace(t, home, "req", "list")
-	if !strings.Contains(activeOut, "pay-flow\tactive\tfalse\tPayment Flow") {
+	if !strings.Contains(activeOut, "pay-flow\tactive\tactive\tfalse\tPayment Flow") {
 		t.Fatalf("req list missing active requirement:\n%s", activeOut)
 	}
 
 	runWorkspace(t, home, "req", "finish", "pay-flow", "-m", "feat: finish")
-	if out := runWorkspace(t, home, "req", "list"); strings.Contains(out, "pay-flow") {
-		t.Fatalf("req list should hide completed archived requirement, got:\n%s", out)
+	readyOut := runWorkspace(t, home, "req", "list")
+	if !strings.Contains(readyOut, "pay-flow\tactive\tready\tfalse\tPayment Flow") {
+		t.Fatalf("req list missing ready requirement:\n%s", readyOut)
 	}
 	allOut := runWorkspace(t, home, "req", "list", "--all")
-	if !strings.Contains(allOut, "pay-flow\tcompleted\ttrue\tPayment Flow") {
-		t.Fatalf("req list --all missing completed archived requirement:\n%s", allOut)
+	if !strings.Contains(allOut, "pay-flow\tactive\tready\tfalse\tPayment Flow") {
+		t.Fatalf("req list --all missing ready requirement:\n%s", allOut)
 	}
 }
 
@@ -217,8 +229,183 @@ func TestReqArchiveRejectsActiveAndIsIdempotentForCompleted(t *testing.T) {
 		t.Fatal("req archive succeeded for active requirement, want error")
 	}
 	runWorkspace(t, home, "req", "finish", "pay-flow", "-m", "feat: finish")
+	if err := runWorkspaceError(home, "req", "archive", "pay-flow"); err == nil {
+		t.Fatal("req archive succeeded for ready requirement, want error")
+	}
+	runWorkspace(t, home, "release", "create", "2026-07-01 Release", "--key", "2026-07-01", "--req", "pay-flow")
+	runWorkspace(t, home, "release", "integrate", "2026-07-01")
+	runWorkspace(t, home, "release", "publish", "2026-07-01", "--tested")
 	runWorkspace(t, home, "req", "archive", "pay-flow")
 	runWorkspace(t, home, "req", "archive", "pay-flow")
+}
+
+func TestCLIReleaseFlowPublishesReadyRequirement(t *testing.T) {
+	home := t.TempDir()
+	remote := seedRemote(t)
+
+	runWorkspace(t, home, "init")
+	runWorkspace(t, home, "repo", "add", "backend", remote, "--base", "main")
+	runWorkspace(t, home, "req", "create", "Payment Flow", "--key", "pay-flow", "--repo", "backend")
+	worktree := filepath.Join(home, "work", "requirements", "pay-flow", "backend")
+	runGit(t, worktree, "config", "user.name", "Workspace Test")
+	runGit(t, worktree, "config", "user.email", "workspace@example.com")
+	if err := os.WriteFile(filepath.Join(worktree, "pay.txt"), []byte("pay\n"), 0o644); err != nil {
+		t.Fatalf("write pay feature: %v", err)
+	}
+	runWorkspace(t, home, "req", "finish", "pay-flow", "-m", "feat: pay flow")
+	runWorkspace(t, home, "release", "create", "2026-07-01 Release", "--key", "2026-07-01", "--req", "pay-flow")
+	integrateOut := runWorkspace(t, home, "release", "integrate", "2026-07-01")
+	if !strings.Contains(integrateOut, "2026-07-01\tintegrated\t") || !strings.Contains(integrateOut, "release/2026-07-01") {
+		t.Fatalf("release integrate output missing integrated release details:\n%s", integrateOut)
+	}
+	publishOut := runWorkspace(t, home, "release", "publish", "2026-07-01", "--tested")
+	if !strings.Contains(publishOut, "2026-07-01\tpublished") {
+		t.Fatalf("release publish output missing published release:\n%s", publishOut)
+	}
+
+	checkout := filepath.Join(t.TempDir(), "checkout")
+	run(t, "", "git", "clone", remote, checkout)
+	runGit(t, checkout, "checkout", "main")
+	if _, err := os.Stat(filepath.Join(checkout, "pay.txt")); err != nil {
+		t.Fatalf("published main missing pay.txt: %v", err)
+	}
+	allOut := runWorkspace(t, home, "req", "list", "--all")
+	if !strings.Contains(allOut, "pay-flow\tcompleted\tcompleted\ttrue\tPayment Flow") {
+		t.Fatalf("req list --all missing published completed requirement:\n%s", allOut)
+	}
+	if !strings.Contains(allOut, "released") {
+		t.Fatalf("req list --all missing released completion:\n%s", allOut)
+	}
+	showOut := runWorkspace(t, home, "req", "show", "pay-flow")
+	if !strings.Contains(showOut, "completion:\treleased") {
+		t.Fatalf("req show missing released completion:\n%s", showOut)
+	}
+}
+
+func TestReleaseStatusRefreshesStaleStateAndShowsSnapshots(t *testing.T) {
+	home := t.TempDir()
+	remote := seedRemote(t)
+
+	runWorkspace(t, home, "init")
+	runWorkspace(t, home, "repo", "add", "backend", remote, "--base", "main")
+	runWorkspace(t, home, "req", "create", "Payment Flow", "--key", "pay-flow", "--repo", "backend")
+	worktree := filepath.Join(home, "work", "requirements", "pay-flow", "backend")
+	runGit(t, worktree, "config", "user.name", "Workspace Test")
+	runGit(t, worktree, "config", "user.email", "workspace@example.com")
+	if err := os.WriteFile(filepath.Join(worktree, "pay.txt"), []byte("pay\n"), 0o644); err != nil {
+		t.Fatalf("write pay feature: %v", err)
+	}
+	runWorkspace(t, home, "req", "finish", "pay-flow", "-m", "feat: pay flow")
+	runWorkspace(t, home, "release", "create", "2026-07-01 Release", "--key", "2026-07-01", "--req", "pay-flow")
+	runWorkspace(t, home, "release", "integrate", "2026-07-01")
+
+	pushRemoteCommit(t, remote, "feature/pay-flow", "late.txt", "late\n")
+
+	listOut := runWorkspace(t, home, "release", "list")
+	if !strings.Contains(listOut, "2026-07-01\tstale") {
+		t.Fatalf("release list did not refresh stale state:\n%s", listOut)
+	}
+
+	out := runWorkspace(t, home, "release", "status", "2026-07-01")
+	for _, want := range []string{
+		"2026-07-01\tstale",
+		"stale\tfeature branch changed after integration for requirement pay-flow repo backend",
+		"req\tpay-flow\tactive",
+		"repo\tbackend\tintegrated\tmain\t",
+		"feature\tpay-flow\tbackend\tfeature/pay-flow\t",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("release status output missing %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestReleaseStatusShowsManualReasonDuringPublishInProgress(t *testing.T) {
+	home := t.TempDir()
+	remoteA := seedRemote(t)
+	remoteB := seedRemote(t)
+
+	runWorkspace(t, home, "init")
+	runWorkspace(t, home, "repo", "add", "backend", remoteA, "--base", "main")
+	runWorkspace(t, home, "repo", "add", "frontend", remoteB, "--base", "main")
+	runWorkspace(t, home, "req", "create", "Payment Flow", "--key", "pay-flow", "--repo", "backend", "--repo", "frontend")
+	for repoName, filename := range map[string]string{"backend": "backend.txt", "frontend": "frontend.txt"} {
+		worktree := filepath.Join(home, "work", "requirements", "pay-flow", repoName)
+		runGit(t, worktree, "config", "user.name", "Workspace Test")
+		runGit(t, worktree, "config", "user.email", "workspace@example.com")
+		if err := os.WriteFile(filepath.Join(worktree, filename), []byte(repoName+"\n"), 0o644); err != nil {
+			t.Fatalf("write %s feature: %v", repoName, err)
+		}
+	}
+	runWorkspace(t, home, "req", "finish", "pay-flow", "-m", "feat: pay flow")
+	runWorkspace(t, home, "release", "create", "2026-07-01 Release", "--key", "2026-07-01", "--req", "pay-flow")
+	runWorkspace(t, home, "release", "integrate", "2026-07-01")
+
+	hookPath := filepath.Join(remoteB, "hooks", "pre-receive")
+	if err := os.WriteFile(hookPath, []byte("#!/bin/sh\nexit 1\n"), 0o755); err != nil {
+		t.Fatalf("write rejecting hook: %v", err)
+	}
+	if err := runWorkspaceError(home, "release", "publish", "2026-07-01", "--tested"); err == nil {
+		t.Fatal("release publish succeeded with rejecting second repo, want error")
+	}
+	seedRemoteBaseCommit(t, remoteA, "main", "external.txt", "external\n")
+
+	listOut := runWorkspace(t, home, "release", "list")
+	if !strings.Contains(listOut, "2026-07-01\tintegrated\tpublish-in-progress") {
+		t.Fatalf("release list output missing publish-in-progress state:\n%s", listOut)
+	}
+
+	out := runWorkspace(t, home, "release", "status", "2026-07-01")
+	for _, want := range []string{
+		"publish-in-progress\ttrue",
+		"manual\tpublished repo backend target branch changed after publish",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("release status output missing %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestReleaseStatusShowsRemovedRequirementFeatureSnapshotName(t *testing.T) {
+	home := t.TempDir()
+	remote := seedRemote(t)
+
+	runWorkspace(t, home, "init")
+	runWorkspace(t, home, "repo", "add", "backend", remote, "--base", "main")
+	for _, req := range []struct {
+		key      string
+		title    string
+		filename string
+		content  string
+	}{
+		{key: "pay-flow", title: "Payment Flow", filename: "pay.txt", content: "pay\n"},
+		{key: "user-center", title: "User Center", filename: "user.txt", content: "user\n"},
+	} {
+		runWorkspace(t, home, "req", "create", req.title, "--key", req.key, "--repo", "backend")
+		worktree := filepath.Join(home, "work", "requirements", req.key, "backend")
+		runGit(t, worktree, "config", "user.name", "Workspace Test")
+		runGit(t, worktree, "config", "user.email", "workspace@example.com")
+		if err := os.WriteFile(filepath.Join(worktree, req.filename), []byte(req.content), 0o644); err != nil {
+			t.Fatalf("write %s feature: %v", req.key, err)
+		}
+		runWorkspace(t, home, "req", "finish", req.key, "-m", "feat: "+req.key)
+	}
+	runWorkspace(t, home, "release", "create", "2026-07-01 Release", "--key", "2026-07-01", "--req", "pay-flow", "--req", "user-center")
+	runWorkspace(t, home, "release", "integrate", "2026-07-01")
+	runWorkspace(t, home, "release", "remove-req", "2026-07-01", "user-center")
+
+	out := runWorkspace(t, home, "release", "status", "2026-07-01")
+	for _, want := range []string{
+		"req\tuser-center\tremoved",
+		"feature\tuser-center\tbackend\tfeature/user-center\t",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("release status output missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "feature\t\tbackend") {
+		t.Fatalf("release status output has unnamed removed feature snapshot:\n%s", out)
+	}
 }
 
 func TestDevUnknownToolReturnsError(t *testing.T) {
@@ -232,6 +419,27 @@ func TestDevUnknownToolReturnsError(t *testing.T) {
 	err := runWorkspaceError(home, "dev", "pay-flow", "--tool", "unknown")
 	if err == nil || !strings.Contains(err.Error(), "unknown tool") {
 		t.Fatalf("dev --tool unknown error = %v, want unknown tool", err)
+	}
+}
+
+func TestDevRejectsCleanupPendingRequirement(t *testing.T) {
+	home := t.TempDir()
+	remote := seedRemote(t)
+	logPath := filepath.Join(t.TempDir(), "codex.log")
+	fakeCodex := writeFakeCommand(t, logPath)
+
+	runWorkspace(t, home, "init")
+	replaceConfigLine(t, filepath.Join(home, "config.yaml"), `  codex: "codex"`, `  codex: "`+fakeCodex+`"`)
+	runWorkspace(t, home, "repo", "add", "backend", remote, "--base", "main")
+	runWorkspace(t, home, "req", "create", "Payment Flow", "--key", "pay-flow", "--repo", "backend")
+	markRequirementCleanupPending(t, home, "pay-flow")
+
+	err := runWorkspaceError(home, "dev", "pay-flow", "--tool", "codex")
+	if err == nil || !strings.Contains(err.Error(), "cleanup-pending") {
+		t.Fatalf("dev cleanup-pending error = %v, want cleanup-pending", err)
+	}
+	if _, statErr := os.Stat(logPath); !os.IsNotExist(statErr) {
+		t.Fatalf("dev should not start tool for cleanup-pending requirement, stat err = %v", statErr)
 	}
 }
 
@@ -267,6 +475,27 @@ func TestIDECommandUsesSelectedTool(t *testing.T) {
 
 	wantWorkspace := filepath.Join(home, "work", "requirements", "pay-flow")
 	assertFakeCommandInvocation(t, logPath, wantWorkspace)
+}
+
+func TestIDERejectsCleanupPendingRequirement(t *testing.T) {
+	home := t.TempDir()
+	remote := seedRemote(t)
+	logPath := filepath.Join(t.TempDir(), "ide.log")
+	fakeIDE := writeFakeCommand(t, logPath)
+
+	runWorkspace(t, home, "init")
+	replaceConfigLine(t, filepath.Join(home, "config.yaml"), `  vscode: "code"`, `  vscode: "`+fakeIDE+`"`)
+	runWorkspace(t, home, "repo", "add", "backend", remote, "--base", "main")
+	runWorkspace(t, home, "req", "create", "Payment Flow", "--key", "pay-flow", "--repo", "backend")
+	markRequirementCleanupPending(t, home, "pay-flow")
+
+	err := runWorkspaceError(home, "ide", "pay-flow")
+	if err == nil || !strings.Contains(err.Error(), "cleanup-pending") {
+		t.Fatalf("ide cleanup-pending error = %v, want cleanup-pending", err)
+	}
+	if _, statErr := os.Stat(logPath); !os.IsNotExist(statErr) {
+		t.Fatalf("ide should not start tool for cleanup-pending requirement, stat err = %v", statErr)
+	}
 }
 
 func TestIDEUnknownToolReturnsError(t *testing.T) {
@@ -330,6 +559,32 @@ func writeFakeCommand(t *testing.T, logPath string) string {
 		t.Fatalf("write fake command: %v", err)
 	}
 	return path
+}
+
+func markRequirementCleanupPending(t *testing.T, home, key string) {
+	t.Helper()
+	db, err := store.Open(filepath.Join(home, "workspace.db"))
+	if err != nil {
+		t.Fatalf("store.Open() error = %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	if err := db.Migrate(t.Context()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+	req, err := db.GetRequirement(t.Context(), key)
+	if err != nil {
+		t.Fatalf("GetRequirement(%s) error = %v", key, err)
+	}
+	rels, err := db.ListRequirementRepos(t.Context(), req.ID)
+	if err != nil {
+		t.Fatalf("ListRequirementRepos() error = %v", err)
+	}
+	if len(rels) == 0 {
+		t.Fatalf("requirement %s has no repos", key)
+	}
+	if err := db.UpdateRequirementRepoStatus(t.Context(), rels[0].ID, store.RequirementRepoStatusPushed); err != nil {
+		t.Fatalf("UpdateRequirementRepoStatus(pushed) error = %v", err)
+	}
 }
 
 func assertFakeCommandInvocation(t *testing.T, logPath, workspacePath string) {
@@ -397,6 +652,21 @@ func seedRemoteBaseCommit(t *testing.T, remote, branch, filename, content string
 	}
 	runGit(t, seed, "add", filename)
 	run(t, seed, "git", "-c", "user.name=Workspace Test", "-c", "user.email=workspace@example.com", "commit", "-m", "base update")
+	runGit(t, seed, "push", "origin", branch)
+	return strings.TrimSpace(runGitOutput(t, seed, "rev-parse", "HEAD"))
+}
+
+func pushRemoteCommit(t *testing.T, remote, branch, filename, content string) string {
+	t.Helper()
+	root := t.TempDir()
+	seed := filepath.Join(root, "branch-seed")
+	run(t, "", "git", "clone", remote, seed)
+	runGit(t, seed, "checkout", "-B", branch, "origin/"+branch)
+	if err := os.WriteFile(filepath.Join(seed, filename), []byte(content), 0o644); err != nil {
+		t.Fatalf("write %s: %v", filename, err)
+	}
+	runGit(t, seed, "add", filename)
+	run(t, seed, "git", "-c", "user.name=Workspace Test", "-c", "user.email=workspace@example.com", "commit", "-m", "branch update")
 	runGit(t, seed, "push", "origin", branch)
 	return strings.TrimSpace(runGitOutput(t, seed, "rev-parse", "HEAD"))
 }

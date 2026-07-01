@@ -33,7 +33,7 @@
           <p class="eyebrow">需求开发空间 · 多 repo · git worktree</p>
           <h1>workspace-cli</h1>
           <p class="lead">
-            把一个需求涉及的多个 Git 仓库集中到同一个 workspace 中，用统一 feature 分支完成跨仓库开发、提交、推送和清理。
+            把一个需求涉及的多个 Git 仓库集中到同一个 workspace 中，用统一 feature 分支完成跨仓库开发，再把多个 ready 需求集成到 release 分支并发布到 base branch。
           </p>
           <div class="actions">
             <a class="button primary" href="https://github.com/idefav/workspace-cli">查看源码</a>
@@ -56,7 +56,10 @@ pay-flow  ~/.workspace-cli/work/requirements/pay-flow
 
 $ workspace dev pay-flow --tool codex
 $ workspace ide pay-flow
-$ workspace req finish pay-flow -m "feat: complete pay-flow"</code></pre>
+$ workspace req finish pay-flow -m "feat: complete pay-flow"
+$ workspace release create "2026-07-01 发布" --key 2026-07-01 --req pay-flow
+$ workspace release integrate 2026-07-01
+$ workspace release publish 2026-07-01 --tested</code></pre>
         </div>
       </section>
 
@@ -64,7 +67,7 @@ $ workspace req finish pay-flow -m "feat: complete pay-flow"</code></pre>
         <div>
           <h2>为跨仓库需求开发而生</h2>
           <p>
-            workspace-cli 的 workspace 不是单个代码仓库，而是围绕一个需求临时组织起来的开发空间。它负责把多个 repo 拉进同一个目录，保持统一 feature 分支，并在完成时执行可恢复的提交、推送和 worktree 清理流程。
+            workspace-cli 的 workspace 不是单个代码仓库，而是围绕一个需求临时组织起来的开发空间。它负责把多个 repo 拉进同一个目录，保持统一 feature 分支，在需求完成时进入 ready 状态，并把多个 ready 需求集成到 release 分支后发布到 base branch。
           </p>
         </div>
         <dl class="metrics">
@@ -127,7 +130,7 @@ workspace completion fish \
       <section class="section flow-section" id="flow">
         <div class="section-heading">
           <p class="eyebrow">workflow</p>
-          <h2>从需求到归档的完整本地流程</h2>
+          <h2>从需求开发到 Release 发布</h2>
         </div>
         <div class="flow-grid">
           <article>
@@ -147,8 +150,18 @@ workspace completion fish \
           </article>
           <article>
             <span class="step">04</span>
-            <h3>完成清理</h3>
-            <p>全部 repo push 成功后再删除 worktree，失败时保留现场并允许 finish 重试。</p>
+            <h3>完成为 ready</h3>
+            <p>全部 repo feature 分支 push 成功后再删除需求 worktree，失败时保留现场并允许 finish 重试。</p>
+          </article>
+          <article>
+            <span class="step">05</span>
+            <h3>集成测试</h3>
+            <p>选择多个 ready 需求，删除并重建 release 分支，按顺序合入 feature 分支后测试。</p>
+          </article>
+          <article>
+            <span class="step">06</span>
+            <h3>发布归档</h3>
+            <p>测试确认后把 release 合并到每个 repo 的 base branch，发布成功的需求进入 completed 并归档。</p>
           </article>
         </div>
       </section>
@@ -173,11 +186,33 @@ workspace completion fish \
             <h3>需求管理</h3>
             <ul>
               <li><code>workspace req create &lt;title&gt; --repo &lt;name&gt;</code></li>
+              <li><code>workspace req list [--all]</code></li>
               <li><code>workspace req show &lt;key&gt;</code></li>
+              <li><code>workspace req update &lt;key&gt; --title &lt;title&gt;</code></li>
               <li><code>workspace req add-repo &lt;key&gt; &lt;repo&gt;</code></li>
+              <li><code>workspace req archive &lt;key&gt;</code></li>
               <li><code>workspace req finish &lt;key&gt; -m &lt;message&gt;</code></li>
+              <li><code>workspace req reopen &lt;key&gt;</code></li>
               <li><code>workspace dev &lt;key&gt; --tool codex|claude</code></li>
               <li><code>workspace ide &lt;key&gt; --tool vscode</code></li>
+            </ul>
+          </div>
+          <div class="command-list">
+            <h3>Release 管理</h3>
+            <ul>
+              <li><code>workspace release create &lt;name&gt; --req &lt;key&gt;</code></li>
+              <li><code>workspace release list [--all]</code></li>
+              <li><code>workspace release show &lt;key&gt;</code></li>
+              <li><code>workspace release status &lt;key&gt;</code></li>
+              <li><code>workspace release add-req &lt;release&gt; &lt;req&gt;</code></li>
+              <li><code>workspace release remove-req &lt;release&gt; &lt;req&gt;</code></li>
+              <li><code>workspace release integrate &lt;key&gt;</code></li>
+              <li><code>workspace release publish &lt;key&gt; --tested</code></li>
+            </ul>
+          </div>
+          <div class="command-list">
+            <h3>工具</h3>
+            <ul>
               <li><code>workspace update --check</code></li>
               <li><code>workspace completion zsh</code></li>
             </ul>
@@ -200,8 +235,8 @@ workspace completion fish \
             <p>托管 repo 使用 bare clone，需求 workspace 使用 worktree，避免重复 clone。</p>
           </article>
           <article>
-            <h3>事务式完成体验</h3>
-            <p>所有 repo 推送成功后才进入 cleanup；清理失败可重试，dirty worktree 不会被删除。</p>
+            <h3>两阶段完成体验</h3>
+            <p>需求 finish 后进入 ready；release publish 成功后才写入 completed 并归档。</p>
           </article>
         </div>
       </section>

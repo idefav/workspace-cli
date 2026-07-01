@@ -8,12 +8,13 @@ import (
 )
 
 type Config struct {
-	Home     string
-	DBPath   string
-	WorkDir  string
-	ReposDir string
-	ReqDir   string
-	Tools    Tools
+	Home       string
+	DBPath     string
+	WorkDir    string
+	ReposDir   string
+	ReqDir     string
+	ReleaseDir string
+	Tools      Tools
 }
 
 type Tools struct {
@@ -27,11 +28,12 @@ type Tools struct {
 func Default(home string) Config {
 	workDir := filepath.Join(home, "work")
 	return Config{
-		Home:     home,
-		DBPath:   filepath.Join(home, "workspace.db"),
-		WorkDir:  workDir,
-		ReposDir: filepath.Join(workDir, "repos"),
-		ReqDir:   filepath.Join(workDir, "requirements"),
+		Home:       home,
+		DBPath:     filepath.Join(home, "workspace.db"),
+		WorkDir:    workDir,
+		ReposDir:   filepath.Join(workDir, "repos"),
+		ReqDir:     filepath.Join(workDir, "requirements"),
+		ReleaseDir: filepath.Join(workDir, "releases"),
 		Tools: Tools{
 			Codex:  []string{"codex"},
 			Claude: []string{"claude"},
@@ -44,7 +46,7 @@ func Default(home string) Config {
 
 func Init(home string) (Config, error) {
 	cfg := Default(home)
-	for _, dir := range []string{cfg.Home, cfg.WorkDir, cfg.ReposDir, cfg.ReqDir} {
+	for _, dir := range []string{cfg.Home, cfg.WorkDir, cfg.ReposDir, cfg.ReqDir, cfg.ReleaseDir} {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return Config{}, fmt.Errorf("create %s: %w", dir, err)
 		}
@@ -84,6 +86,8 @@ func Load(home string) (Config, error) {
 			cfg.ReposDir = value
 		case "requirements_dir":
 			cfg.ReqDir = value
+		case "releases_dir":
+			cfg.ReleaseDir = value
 		case "codex":
 			if value != "" {
 				cfg.Tools.Codex = []string{value}
@@ -114,11 +118,12 @@ func defaultYAML(cfg Config) string {
 work_dir: "%s"
 repos_dir: "%s"
 requirements_dir: "%s"
+releases_dir: "%s"
 tools:
   codex: "%s"
   claude: "%s"
   vscode: "%s"
   cursor: "%s"
   zed: "%s"
-`, cfg.DBPath, cfg.WorkDir, cfg.ReposDir, cfg.ReqDir, cfg.Tools.Codex[0], cfg.Tools.Claude[0], cfg.Tools.VSCode[0], cfg.Tools.Cursor[0], cfg.Tools.Zed[0])
+`, cfg.DBPath, cfg.WorkDir, cfg.ReposDir, cfg.ReqDir, cfg.ReleaseDir, cfg.Tools.Codex[0], cfg.Tools.Claude[0], cfg.Tools.VSCode[0], cfg.Tools.Cursor[0], cfg.Tools.Zed[0])
 }
